@@ -48,7 +48,11 @@ and warns before an external change can replace local work.
 The font button in the footer picks the writing font from any installed text font,
 and Omawrite remembers the choice. IBM Plex Mono is the default.
 
-Text follows the desktop text size — `omarchy display text size`, or GNOME's
+Text size and interface size are separate knobs: `Ctrl+=` / `Ctrl+-` / `Ctrl+0` size the
+writing, `Ctrl+Alt+=` / `Ctrl+Alt+-` / `Ctrl+Alt+0` size everything around it (`⌘` and
+`⌥⌘` on macOS). Both are also in the font popup and are remembered.
+
+Both start from the desktop text size — `omarchy display text size`, or GNOME's
 `text-scaling-factor` — and re-flows without a restart. The default of 12px leaves
 Omawrite at the size it is designed around; larger and smaller sizes scale from there.
 

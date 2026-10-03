@@ -25,6 +25,8 @@ class Backend : public QObject {
     Q_PROPERTY(int wordCount READ wordCount NOTIFY wordCountChanged)
     Q_PROPERTY(bool darkMode READ darkMode WRITE setDarkMode NOTIFY darkModeChanged)
     Q_PROPERTY(qreal textScale READ textScale WRITE setTextScale NOTIFY textScaleChanged)
+    Q_PROPERTY(qreal textZoom READ textZoom NOTIFY textZoomChanged)
+    Q_PROPERTY(qreal interfaceZoom READ interfaceZoom NOTIFY interfaceZoomChanged)
     Q_PROPERTY(QString themeBackground READ themeBackground NOTIFY themeColorsChanged)
     Q_PROPERTY(QString themeForeground READ themeForeground NOTIFY themeColorsChanged)
     Q_PROPERTY(QString themeAccent READ themeAccent NOTIFY themeColorsChanged)
@@ -48,6 +50,9 @@ public:
     void setDarkMode(bool darkMode);
     qreal textScale() const { return m_textScale; }
     void setTextScale(qreal textScale);
+    qreal textZoom() const { return m_textZoom; }
+    qreal interfaceZoom() const { return m_interfaceZoom; }
+    static qreal steppedZoom(qreal zoom, int steps);
     QString themeBackground() const { return m_themeBackground; }
     QString themeForeground() const { return m_themeForeground; }
     QString themeAccent() const { return m_themeAccent; }
@@ -83,6 +88,8 @@ public:
     Q_INVOKABLE QVariantMap windowGeometry() const;
     Q_INVOKABLE void saveWindowGeometry(int x, int y, int width, int height, bool maximized);
     Q_INVOKABLE void documentFontChanged();
+    Q_INVOKABLE void zoomText(int steps);
+    Q_INVOKABLE void zoomInterface(int steps);
 
 signals:
     void fileUrlChanged();
@@ -91,6 +98,8 @@ signals:
     void wordCountChanged();
     void darkModeChanged();
     void textScaleChanged();
+    void textZoomChanged();
+    void interfaceZoomChanged();
     void themeColorsChanged();
     void editorFontChanged();
     void closeAfterSave();
@@ -127,6 +136,8 @@ private:
     int m_wordCount = 0;
     bool m_darkMode = true;
     qreal m_textScale = 1.0;
+    qreal m_textZoom = 1.0;
+    qreal m_interfaceZoom = 1.0;
     bool m_loading = false;
     bool m_closeAfterSave = false;
     bool m_formattingTypography = false;

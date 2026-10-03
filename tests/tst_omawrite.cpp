@@ -262,6 +262,42 @@ private slots:
         QCOMPARE(editor->property("font").value<QFont>().pixelSize(), 15);
     }
 
+    void zoomsTextAndInterfaceSeparately() {
+        QCOMPARE(Backend::steppedZoom(1.0, 1), 1.1);
+        QCOMPARE(Backend::steppedZoom(0.5, -1), 0.5);
+        QCOMPARE(Backend::steppedZoom(3.0, 1), 3.0);
+        QCOMPARE(Backend::steppedZoom(1.23, 0), 1.2);
+
+        const QString mainQmlPath = QFINDTESTDATA("../src/Main.qml");
+        {
+            Backend backend;
+            Vault vault;
+            QQmlEngine engine;
+            engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+            engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+            QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
+            QScopedPointer<QObject> window(component.create());
+            QVERIFY2(window, qPrintable(component.errorString()));
+
+            backend.zoomText(2);
+            QCOMPARE(window->property("editorFontPixelSize").toInt(), 24);
+            QCOMPARE(window->property("textScale").toReal(), 1.0);
+
+            backend.zoomInterface(-1);
+            QCOMPARE(window->property("textScale").toReal(), 0.9);
+            QCOMPARE(window->property("editorFontPixelSize").toInt(), 24);
+            QCOMPARE(backend.status(), QStringLiteral("Interface size 90%"));
+        }
+
+        Backend reopened;
+        QCOMPARE(reopened.textZoom(), 1.2);
+        QCOMPARE(reopened.interfaceZoom(), 0.9);
+        reopened.zoomText(0);
+        reopened.zoomInterface(0);
+        QCOMPARE(Backend().textZoom(), 1.0);
+        QCOMPARE(Backend().interfaceZoom(), 1.0);
+    }
+
     void remembersLastSaveDirectory() {
         QTemporaryDir saveDirectory;
         QVERIFY(saveDirectory.isValid());

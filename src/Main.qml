@@ -27,8 +27,11 @@ ApplicationWindow {
     // The desktop's text size knob (GNOME's text-scaling-factor, which
     // `omarchy display text size` drives) anchored so its 12px default leaves
     // the app at the sizes it was designed around.
-    readonly property real textScale: backend.textScale
-    readonly property int editorFontPixelSize: scaledSize(20)
+    // Two knobs on top of it: textZoom sizes the writing, interfaceZoom
+    // everything around it.
+    readonly property real textScale: backend.textScale * backend.interfaceZoom
+    readonly property int editorFontPixelSize:
+        Math.max(8, Math.round(20 * backend.textScale * backend.textZoom))
     readonly property int footerHeight: scaledSize(32)
     readonly property int editorWidth: Math.min(
         Math.round(writerFontMetrics.averageCharacterWidth * 65),
@@ -378,6 +381,42 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequences: ["Ctrl+=", "Ctrl++"]
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomText(1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+-"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomText(-1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+0"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomText(0)
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+Alt+=", "Ctrl+Alt++"]
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomInterface(1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+-"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomInterface(-1)
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+0"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.zoomInterface(0)
+    }
+
+    Shortcut {
         sequence: "Ctrl+W"
         context: Qt.ApplicationShortcut
         enabled: win.macOS
@@ -551,8 +590,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         contentItem: Label {
             text: win.macOS
-                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
-                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
+                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
     }
@@ -1095,7 +1134,11 @@ ApplicationWindow {
             textColor: win.textColor
             mutedColor: win.mutedColor
             highlightColor: backend.themeAccent
+            textZoom: backend.textZoom
+            interfaceZoom: backend.interfaceZoom
             onFontChosen: function(family) { backend.editorFont = family; }
+            onTextZoomRequested: function(steps) { backend.zoomText(steps); }
+            onInterfaceZoomRequested: function(steps) { backend.zoomInterface(steps); }
             onClosed: editor.forceActiveFocus()
         }
 

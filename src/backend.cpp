@@ -31,12 +31,15 @@
 #include <QWindow>
 
 #include <algorithm>
+#include <cmath>
 
 #include "markdownhighlighter.h"
 
 constexpr qreal typoraLineHeightPercent = 140;
 const QString lastSaveDirectorySetting = QStringLiteral("file/lastSaveDirectory");
 const QString editorFontSetting = QStringLiteral("editor/font");
+const QString textZoomSetting = QStringLiteral("view/textZoom");
+const QString interfaceZoomSetting = QStringLiteral("view/interfaceZoom");
 
 // Noto ships a separate family per script, which buries every other font in
 // the picker. Offer only the core Latin families; the rest still serve as
@@ -96,6 +99,8 @@ Backend::Backend(QObject *parent) : QObject(parent) {
     m_editorFont = !savedFont.isEmpty() && QFontDatabase::hasFamily(savedFont)
         ? savedFont
         : defaultEditorFont();
+    m_textZoom = steppedZoom(QSettings().value(textZoomSetting, 1.0).toReal(), 0);
+    m_interfaceZoom = steppedZoom(QSettings().value(interfaceZoomSetting, 1.0).toReal(), 0);
 
     const QString stateDirectory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(stateDirectory);
@@ -189,6 +194,34 @@ void Backend::setTextScale(qreal textScale) {
 
     m_textScale = textScale;
     emit textScaleChanged();
+}
+
+// Zoom moves in 10% steps between 50% and 300%; zero steps only snaps a
+// stored value back onto that grid.
+qreal Backend::steppedZoom(qreal zoom, int steps) {
+    if (zoom <= 0)
+        zoom = 1.0;
+    return qBound(0.5, std::round((zoom + steps * 0.1) * 10) / 10, 3.0);
+}
+
+void Backend::zoomText(int steps) {
+    const qreal zoom = steps == 0 ? 1.0 : steppedZoom(m_textZoom, steps);
+    setStatus(QStringLiteral("Text size %1%").arg(qRound(zoom * 100)));
+    if (qFuzzyCompare(zoom, m_textZoom))
+        return;
+    m_textZoom = zoom;
+    QSettings().setValue(textZoomSetting, zoom);
+    emit textZoomChanged();
+}
+
+void Backend::zoomInterface(int steps) {
+    const qreal zoom = steps == 0 ? 1.0 : steppedZoom(m_interfaceZoom, steps);
+    setStatus(QStringLiteral("Interface size %1%").arg(qRound(zoom * 100)));
+    if (qFuzzyCompare(zoom, m_interfaceZoom))
+        return;
+    m_interfaceZoom = zoom;
+    QSettings().setValue(interfaceZoomSetting, zoom);
+    emit interfaceZoomChanged();
 }
 
 void Backend::attachDocument(QObject *textDocument) {

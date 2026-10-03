@@ -69,19 +69,20 @@ int main(int argc, char *argv[]) {
     const qreal basePointSize = interfaceFont.pointSizeF() > 0
         ? interfaceFont.pointSizeF()
         : app.font().pointSizeF();
-    const auto applyInterfaceFont = [&app, interfaceFont, basePointSize](qreal textScale) {
+    const auto applyInterfaceFont = [&app, &backend, interfaceFont, basePointSize]() {
         QFont scaled = interfaceFont;
-        scaled.setPointSizeF(basePointSize * textScale);
+        scaled.setPointSizeF(basePointSize * backend.textScale() * backend.interfaceZoom());
         app.setFont(scaled);
     };
-    applyInterfaceFont(systemTheme.textScale());
 
     backend.setTextScale(systemTheme.textScale());
+    applyInterfaceFont();
     QObject::connect(&systemTheme, &SystemTheme::textScaleChanged, &backend,
                      [&backend, applyInterfaceFont](qreal textScale) {
-        applyInterfaceFont(textScale);
         backend.setTextScale(textScale);
+        applyInterfaceFont();
     });
+    QObject::connect(&backend, &Backend::interfaceZoomChanged, &app, applyInterfaceFont);
 
     QQmlApplicationEngine engine;
     QObject::connect(&engine, &QQmlApplicationEngine::warnings, &app,

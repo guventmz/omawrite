@@ -14,8 +14,12 @@ Popup {
     property color mutedColor: "#909191"
     property color highlightColor: "#428bca"
     property real maximumHeight: 440
+    property real textZoom: 1
+    property real interfaceZoom: 1
 
     signal fontChosen(string family)
+    signal textZoomRequested(int steps)
+    signal interfaceZoomRequested(int steps)
 
     readonly property var filteredFonts: {
         var query = filterField.text.trim().toLocaleLowerCase();
@@ -38,8 +42,87 @@ Popup {
 
     // Shrink to fit when a filter leaves only a few fonts.
     readonly property real headerHeight: scaledSize(34) + 13
+    readonly property real sizeControlsHeight: scaledSize(64) + 13
     height: Math.min(maximumHeight, topPadding + bottomPadding + headerHeight
-                     + Math.max(scaledSize(36), fontList.contentHeight))
+                     + Math.max(scaledSize(36), fontList.contentHeight) + sizeControlsHeight)
+
+    component StepButton: Label {
+        signal activated()
+        width: picker.scaledSize(28)
+        height: parent.height
+        horizontalAlignment: Text.AlignHCenter
+        verticalAlignment: Text.AlignVCenter
+        color: stepHover.hovered ? picker.textColor : picker.mutedColor
+        font.family: picker.defaultFont
+        font.pixelSize: picker.scaledSize(16)
+
+        HoverHandler {
+            id: stepHover
+            cursorShape: Qt.PointingHandCursor
+        }
+
+        TapHandler {
+            onTapped: parent.activated()
+        }
+    }
+
+    component SizeStepper: Item {
+        id: stepper
+
+        property string label
+        property real zoom: 1
+        signal stepped(int steps)
+
+        width: parent.width
+        height: picker.scaledSize(32)
+
+        Label {
+            anchors.left: parent.left
+            anchors.leftMargin: 8
+            anchors.verticalCenter: parent.verticalCenter
+            text: stepper.label
+            color: picker.textColor
+            font.family: picker.defaultFont
+            font.pixelSize: picker.scaledSize(13)
+        }
+
+        Row {
+            anchors.right: parent.right
+            height: parent.height
+
+            StepButton {
+                text: "−"
+                onActivated: stepper.stepped(-1)
+            }
+
+            Label {
+                width: picker.scaledSize(48)
+                height: parent.height
+                horizontalAlignment: Text.AlignHCenter
+                verticalAlignment: Text.AlignVCenter
+                text: Math.round(stepper.zoom * 100) + "%"
+                color: zoomHover.hovered ? picker.textColor : picker.mutedColor
+                font.family: picker.defaultFont
+                font.pixelSize: picker.scaledSize(12)
+                ToolTip.visible: zoomHover.hovered
+                ToolTip.text: "Reset"
+
+                HoverHandler {
+                    id: zoomHover
+                    cursorShape: Qt.PointingHandCursor
+                }
+
+                TapHandler {
+                    onTapped: stepper.stepped(0)
+                }
+            }
+
+            StepButton {
+                text: "+"
+                onActivated: stepper.stepped(1)
+            }
+        }
+    }
 
     modal: false
     focus: true
@@ -106,7 +189,7 @@ Popup {
             id: fontList
             objectName: "fontList"
             width: parent.width
-            height: picker.availableHeight - picker.headerHeight
+            height: picker.availableHeight - picker.headerHeight - picker.sizeControlsHeight
             clip: true
             model: picker.filteredFonts
             boundsBehavior: Flickable.StopAtBounds
@@ -157,6 +240,27 @@ Popup {
                     }
                 }
             }
+        }
+
+        Rectangle {
+            width: parent.width
+            height: 1
+            color: picker.mutedColor
+            opacity: 0.3
+        }
+
+        SizeStepper {
+            objectName: "textSizeStepper"
+            label: "Text size"
+            zoom: picker.textZoom
+            onStepped: function(steps) { picker.textZoomRequested(steps); }
+        }
+
+        SizeStepper {
+            objectName: "interfaceSizeStepper"
+            label: "Interface size"
+            zoom: picker.interfaceZoom
+            onStepped: function(steps) { picker.interfaceZoomRequested(steps); }
         }
     }
 }
