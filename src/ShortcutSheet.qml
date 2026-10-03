@@ -2,8 +2,10 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Controls.Material
 
-// Every shortcut in one place, grouped, with a filter: type a word ("link",
-// "size") or a key to narrow the list.
+// Every shortcut in one place, and where to change them. Type to filter,
+// move with the arrows or Ctrl+N / Ctrl+P, press Enter (or click the keys)
+// and then the new keys; Backspace on an empty filter restores the default.
+// The vim and file tree keys are listed for reference.
 Popup {
     id: sheet
 
@@ -17,25 +19,24 @@ Popup {
     property real maximumHeight: 640
     readonly property real headerHeight: scaledSize(32)
 
+    property int selected: 0
+    property string recordingId: ""
+    property string note: ""
+
     function scaledSize(pixels) {
         return Math.max(1, Math.round(pixels * textScale));
     }
 
-    // [description, macOS keys, other keys]
-    readonly property var groups: [
-        { title: "Notes", items: [
-            ["Go to or create note", "⌘P", "Ctrl+P"],
-            ["Search all notes", "⇧⌘F", "Ctrl+Shift+F"],
-            ["Backlinks", "⇧⌘B", "Ctrl+Shift+B"],
-            ["Follow [[link]] / open image", "⌘↩  ⌘-click", "Ctrl+Enter  Ctrl-click"],
-            ["Paste / drop an image", "⌘V  drag in", "Ctrl+V  drag in"],
-            ["Back / forward", "⌘[  ⌘]", "Ctrl+[  Ctrl+]"],
-            ["Insert link", "[[", "[["],
-            ["File tree", "⇧⌘E", "Ctrl+Shift+E"],
-            ["Preview in browser", "⇧⌘P", "Ctrl+Shift+P"],
-            ["Choose vault folder", "⇧⌘O", "Ctrl+Shift+O"],
-            ["Down / up in any list", "⌃n  ⌃p", "Ctrl+N  Ctrl+P"]
-        ]},
+    // Shown alongside the remappable actions: [title, macOS keys, other keys].
+    readonly property var extras: ({
+        "Notes": [["Insert link", "[[", "[["],
+                  ["Down / up in any list", "⌃n  ⌃p", "Ctrl+N  Ctrl+P"],
+                  ["Paste / drop an image", "⌘V  drag in", "Ctrl+V  drag in"]],
+        "Editing": [["Previous match", "⇧↵", "Shift+Enter"],
+                    ["Spelling suggestions", "right-click", "right-click"]]
+    })
+
+    readonly property var fixedGroups: [
         { title: "File tree (netrw keys)", items: [
             ["Down / up", "j k  ⌃n ⌃p", "j k  Ctrl+N Ctrl+P"],
             ["Open note / fold folder", "↵  o v t", "Enter  o v t"],
@@ -52,26 +53,6 @@ Popup {
             ["Unmark all", "mu", "mu"],
             ["Refresh / close", "⌃l  Esc", "Ctrl+L  Esc"]
         ]},
-        { title: "Editing", items: [
-            ["Bold", "⌘B", "Ctrl+B"],
-            ["Italic", "⌘I", "Ctrl+I"],
-            ["Markdown link", "⌘K", "Ctrl+K"],
-            ["Undo / redo", "⌘Z  ⇧⌘Z", "Ctrl+Z  Ctrl+Shift+Z"],
-            ["Find", "⌘F", "Ctrl+F"],
-            ["Next / previous match", "↵  ⇧↵", "Enter  Shift+Enter"],
-            ["Find and replace", "⌥⌘F", "Ctrl+H"],
-            ["Look up word", "⌃⌘D", "—"],
-            ["Spelling suggestions", "right-click", "right-click"]
-        ]},
-        { title: "View", items: [
-            ["Theme", "⌥⌘T", "Ctrl+Alt+T"],
-            ["Wrap: column / window / off", "⌥⌘L", "Ctrl+Alt+L"],
-            ["Text size", "⌘=  ⌘−  ⌘0", "Ctrl+=  Ctrl+-  Ctrl+0"],
-            ["Interface size", "⌥⌘=  ⌥⌘−  ⌥⌘0", "Ctrl+Alt+=  -  0"],
-            ["Fullscreen", "⌃⌘F", "F11"],
-            ["This sheet", "⌘,  ⌘?", "Ctrl+,  Ctrl+?"],
-            ["Vim mode on / off", "⌥⌘V", "Ctrl+Alt+V"]
-        ]},
         { title: "Vim (when on)", items: [
             ["Insert / append", "i a I A o O", "i a I A o O"],
             ["Back to normal", "Esc  ⌃[", "Esc  Ctrl+["],
@@ -87,44 +68,115 @@ Popup {
             ["Visual / line", "v  V", "v  V"],
             ["Search", "/  n N  * #", "/  n N  * #"],
             ["Save, close, go to line", ":w :q :wq :q! :42", ":w :q :wq :q! :42"]
-        ]},
-        { title: "File", items: [
-            ["Save", "⌘S", "Ctrl+S"],
-            ["Save as", "⇧⌘S", "Ctrl+Shift+S"],
-            ["Open file", "⌘O", "Ctrl+O"],
-            ["New window", "⌘N", "Ctrl+N"],
-            ["Close window", "⌘W", "—"],
-            ["Minimize", "⌘M", "—"],
-            ["Print", "⌥⌘P", "Ctrl+Alt+P"]
         ]}
     ]
 
-    readonly property var filteredGroups: {
+    // Groups of rows; each row is { title, keys, id, custom, index }, where
+    // only rows with an id (keymap actions) can be changed and index is the
+    // row's place in the flat list the arrows move through.
+    readonly property var groups: {
         var query = filter.text.trim().toLocaleLowerCase();
+        var labels = keymap.labels;
+        var byGroup = {};
+        var order = [];
+        var add = function(group, row) {
+            if (!byGroup[group]) {
+                byGroup[group] = [];
+                order.push(group);
+            }
+            if (query.length > 0 && row.title.toLocaleLowerCase().indexOf(query) === -1
+                    && row.keys.toLocaleLowerCase().indexOf(query) === -1
+                    && group.toLocaleLowerCase().indexOf(query) === -1)
+                return;
+            byGroup[group].push(row);
+        };
+        var actions = keymap.actions;
+        for (var i = 0; i < actions.length; ++i) {
+            var action = actions[i];
+            add(action.group, { title: action.title, keys: labels[action.id], id: action.id,
+                                custom: keymap.isCustom(action.id) });
+        }
+        for (var group in extras) {
+            for (var e = 0; e < extras[group].length; ++e) {
+                var extra = extras[group][e];
+                add(group, { title: extra[0], keys: macOS ? extra[1] : extra[2], id: "", custom: false });
+            }
+        }
+        for (var f = 0; f < fixedGroups.length; ++f) {
+            for (var r = 0; r < fixedGroups[f].items.length; ++r) {
+                var item = fixedGroups[f].items[r];
+                add(fixedGroups[f].title, { title: item[0], keys: macOS ? item[1] : item[2], id: "", custom: false });
+            }
+        }
         var result = [];
-        for (var g = 0; g < groups.length; ++g) {
-            var items = groups[g].items.filter(function(item) {
-                var keys = macOS ? item[1] : item[2];
-                return keys !== "—" && (query.length === 0
-                    || item[0].toLocaleLowerCase().indexOf(query) !== -1
-                    || keys.toLocaleLowerCase().indexOf(query) !== -1
-                    || groups[g].title.toLocaleLowerCase().indexOf(query) !== -1);
-            });
-            if (items.length > 0)
-                result.push({ title: groups[g].title, items: items });
+        var index = 0;
+        for (var o = 0; o < order.length; ++o) {
+            var rows = byGroup[order[o]];
+            if (rows.length === 0)
+                continue;
+            for (var k = 0; k < rows.length; ++k)
+                rows[k].index = index++;
+            result.push({ title: order[o], items: rows });
         }
         return result;
+    }
+
+    readonly property var flatRows: {
+        var rows = [];
+        for (var g = 0; g < groups.length; ++g)
+            rows = rows.concat(groups[g].items);
+        return rows;
+    }
+
+    readonly property var selectedRow: selected >= 0 && selected < flatRows.length ? flatRows[selected] : null
+
+    function move(step) {
+        selected = Math.max(0, Math.min(flatRows.length - 1, selected + step));
+    }
+
+    function startRecording(id) {
+        if (id === "") {
+            note = "This one can't be changed here";
+            return;
+        }
+        recordingId = id;
+        keymap.recording = true;
+        note = "Press the new keys · Esc cancels";
+        recorder.forceActiveFocus();
+    }
+
+    function stopRecording() {
+        recordingId = "";
+        keymap.recording = false;
+        filter.forceActiveFocus();
+    }
+
+    function record(key, modifiers) {
+        var sequence = keymap.sequenceFor(key, modifiers);
+        if (sequence === "")
+            return;
+        var id = recordingId;
+        var lost = keymap.assign(id, sequence);
+        stopRecording();
+        note = lost !== "" ? "Moved " + keymap.labels[id] + " from “" + lost + "”" : "Saved";
     }
 
     modal: true
     focus: true
     padding: 20
-    closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+    closePolicy: recordingId !== "" ? Popup.NoAutoClose
+                                    : Popup.CloseOnEscape | Popup.CloseOnPressOutside
     Material.elevation: 12
 
     onAboutToShow: {
         filter.text = "";
+        selected = 0;
+        note = "";
         filter.forceActiveFocus();
+    }
+    onClosed: {
+        if (recordingId !== "")
+            stopRecording();
     }
 
     background: Rectangle {
@@ -136,6 +188,22 @@ Popup {
 
     contentItem: Column {
         spacing: sheet.scaledSize(14)
+
+        // Takes the keys while a shortcut is being recorded.
+        Item {
+            id: recorder
+            width: 0
+            height: 0
+            Keys.onPressed: function(event) {
+                event.accepted = true;
+                if (event.key === Qt.Key_Escape) {
+                    sheet.stopRecording();
+                    sheet.note = "";
+                    return;
+                }
+                sheet.record(event.key, event.modifiers);
+            }
+        }
 
         Item {
             width: parent.width
@@ -162,6 +230,26 @@ Popup {
                 font.family: "IBM Plex Mono"
                 font.pixelSize: sheet.scaledSize(13)
                 clip: true
+                onTextChanged: sheet.selected = 0
+
+                Keys.onPressed: function(event) {
+                    var control = sheet.macOS ? (event.modifiers & Qt.MetaModifier) : (event.modifiers & Qt.ControlModifier);
+                    if (event.key === Qt.Key_Down || (control && event.key === Qt.Key_N)) {
+                        sheet.move(1);
+                    } else if (event.key === Qt.Key_Up || (control && event.key === Qt.Key_P)) {
+                        sheet.move(-1);
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                        if (sheet.selectedRow)
+                            sheet.startRecording(sheet.selectedRow.id);
+                    } else if (event.key === Qt.Key_Backspace && filter.text.length === 0
+                               && sheet.selectedRow && sheet.selectedRow.custom) {
+                        keymap.reset(sheet.selectedRow.id);
+                        sheet.note = "Restored the default";
+                    } else {
+                        return;
+                    }
+                    event.accepted = true;
+                }
 
                 Label {
                     anchors.fill: parent
@@ -184,9 +272,10 @@ Popup {
         }
 
         Flickable {
+            id: body
             width: parent.width
             height: Math.min(columns.implicitHeight, sheet.maximumHeight - sheet.topPadding
-                             - sheet.bottomPadding - sheet.headerHeight - parent.spacing)
+                             - sheet.bottomPadding - sheet.headerHeight - footer.height - 2 * parent.spacing)
             contentHeight: columns.implicitHeight
             clip: true
             boundsBehavior: Flickable.StopAtBounds
@@ -198,13 +287,13 @@ Popup {
                 spacing: sheet.scaledSize(28)
 
                 Repeater {
-                    model: sheet.filteredGroups
+                    model: sheet.groups
 
                     delegate: Column {
                         id: group
                         required property var modelData
                         width: (columns.width - columns.spacing) / 2
-                        spacing: sheet.scaledSize(6)
+                        spacing: sheet.scaledSize(4)
 
                         Label {
                             text: group.modelData.title
@@ -218,20 +307,37 @@ Popup {
                         Repeater {
                             model: group.modelData.items
 
-                            delegate: Item {
+                            delegate: Rectangle {
                                 id: shortcut
                                 required property var modelData
+                                readonly property bool isSelected: modelData.index === sheet.selected
+                                readonly property bool isRecording: modelData.id !== "" && modelData.id === sheet.recordingId
+
                                 width: group.width
                                 height: sheet.scaledSize(24)
+                                radius: 4
+                                color: isSelected ? Qt.rgba(0.5, 0.5, 0.5, 0.14) : "transparent"
+
+                                // Keep the selected row in view as the arrows move.
+                                onIsSelectedChanged: {
+                                    if (!isSelected)
+                                        return;
+                                    var point = mapToItem(columns, 0, 0);
+                                    if (point.y < body.contentY)
+                                        body.contentY = point.y;
+                                    else if (point.y + height > body.contentY + body.height)
+                                        body.contentY = point.y + height - body.height;
+                                }
 
                                 Label {
                                     anchors.left: parent.left
+                                    anchors.leftMargin: 6
                                     anchors.right: keys.left
                                     anchors.rightMargin: 8
                                     anchors.verticalCenter: parent.verticalCenter
-                                    text: shortcut.modelData[0]
+                                    text: shortcut.modelData.title
                                     elide: Text.ElideRight
-                                    color: sheet.textColor
+                                    color: shortcut.modelData.id !== "" ? sheet.textColor : sheet.mutedColor
                                     font.family: "IBM Plex Mono"
                                     font.pixelSize: sheet.scaledSize(12)
                                 }
@@ -239,19 +345,30 @@ Popup {
                                 Rectangle {
                                     id: keys
                                     anchors.right: parent.right
+                                    anchors.rightMargin: 4
                                     anchors.verticalCenter: parent.verticalCenter
                                     width: keyLabel.implicitWidth + sheet.scaledSize(12)
                                     height: sheet.scaledSize(20)
                                     radius: 4
-                                    color: Qt.rgba(0.5, 0.5, 0.5, 0.16)
+                                    color: shortcut.isRecording ? sheet.highlightColor : Qt.rgba(0.5, 0.5, 0.5, 0.16)
 
                                     Label {
                                         id: keyLabel
                                         anchors.centerIn: parent
-                                        text: sheet.macOS ? shortcut.modelData[1] : shortcut.modelData[2]
-                                        color: sheet.textColor
+                                        text: shortcut.isRecording ? "press keys…"
+                                            : (shortcut.modelData.custom ? "• " : "") + shortcut.modelData.keys
+                                        color: shortcut.modelData.custom && !shortcut.isRecording
+                                               ? sheet.highlightColor : sheet.textColor
                                         font.family: "IBM Plex Mono"
                                         font.pixelSize: sheet.scaledSize(12)
+                                    }
+
+                                    TapHandler {
+                                        enabled: shortcut.modelData.id !== ""
+                                        onTapped: {
+                                            sheet.selected = shortcut.modelData.index;
+                                            sheet.startRecording(shortcut.modelData.id);
+                                        }
                                     }
                                 }
                             }
@@ -259,6 +376,16 @@ Popup {
                     }
                 }
             }
+        }
+
+        Label {
+            id: footer
+            width: parent.width
+            text: sheet.note !== "" ? sheet.note
+                : "↵ change selected  ·  ⌫ restore default  ·  • changed  ·  esc close"
+            color: sheet.mutedColor
+            font.family: "IBM Plex Mono"
+            font.pixelSize: sheet.scaledSize(11)
         }
     }
 }

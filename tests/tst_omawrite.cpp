@@ -8,6 +8,7 @@
 #include "backend.h"
 #include "markdownhighlighter.h"
 #include "vault.h"
+#include "keymap.h"
 #include "themes.h"
 #include "spellchecker.h"
 #include "preview.h"
@@ -217,6 +218,8 @@ private slots:
         QQmlEngine engine;
         engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
         engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+        Keymap keymap;
+        engine.rootContext()->setContextProperty(QStringLiteral("keymap"), &keymap);
         QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> window(component.create());
@@ -248,6 +251,8 @@ private slots:
         QQmlEngine engine;
         engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
         engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+        Keymap keymap;
+        engine.rootContext()->setContextProperty(QStringLiteral("keymap"), &keymap);
         QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/Main.qml")));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> window(component.create());
@@ -263,6 +268,8 @@ private slots:
         QQmlEngine engine;
         engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
         engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+        Keymap keymap;
+        engine.rootContext()->setContextProperty(QStringLiteral("keymap"), &keymap);
         QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> window(component.create());
@@ -295,6 +302,8 @@ private slots:
             QQmlEngine engine;
             engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
             engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+            Keymap keymap;
+            engine.rootContext()->setContextProperty(QStringLiteral("keymap"), &keymap);
             QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
             QScopedPointer<QObject> window(component.create());
             QVERIFY2(window, qPrintable(component.errorString()));
@@ -605,6 +614,37 @@ QtObject {
     void runsVimCommands() {
         QCOMPARE(runVim(QStringLiteral("a"), 0, {":"}).value(QStringLiteral("message")).toString(), QStringLiteral("command"));
         QCOMPARE(runVim(QStringLiteral("a"), 0, {"/"}).value(QStringLiteral("message")).toString(), QStringLiteral("search"));
+    }
+
+    void remapsShortcuts() {
+        {
+            Keymap keymap;
+            QCOMPARE(keymap.sequences(QStringLiteral("bold")), QStringList{QStringLiteral("Ctrl+B")});
+            QVERIFY(!keymap.isCustom(QStringLiteral("bold")));
+            QCOMPARE(Keymap::sequenceFor(Qt::Key_J, int(Qt::ControlModifier | Qt::ShiftModifier)),
+                     QStringLiteral("Ctrl+Shift+J"));
+            QVERIFY(Keymap::sequenceFor(Qt::Key_Shift, int(Qt::ShiftModifier)).isEmpty());
+
+            // Taking Ctrl+K from "Markdown link" leaves it unbound and says so.
+            QSignalSpy changed(&keymap, &Keymap::changed);
+            QCOMPARE(keymap.assign(QStringLiteral("bold"), QStringLiteral("Ctrl+K")), QStringLiteral("Markdown link"));
+            QCOMPARE(changed.count(), 1);
+            QCOMPARE(keymap.sequences(QStringLiteral("bold")), QStringList{QStringLiteral("Ctrl+K")});
+            QVERIFY(keymap.sequences(QStringLiteral("markdownLink")).isEmpty());
+            QCOMPARE(keymap.labels().value(QStringLiteral("markdownLink")).toString(), QStringLiteral("—"));
+            QCOMPARE(keymap.bindings().value(QStringLiteral("bold")).toStringList(), QStringList{QStringLiteral("Ctrl+K")});
+        }
+        Keymap reopened;
+        QCOMPARE(reopened.sequences(QStringLiteral("bold")), QStringList{QStringLiteral("Ctrl+K")});
+        reopened.reset(QStringLiteral("bold"));
+        reopened.reset(QStringLiteral("markdownLink"));
+        QCOMPARE(Keymap().sequences(QStringLiteral("markdownLink")), QStringList{QStringLiteral("Ctrl+K")});
+
+        QStringList ids;
+        for (const Keymap::Action &action : Keymap::actions()) {
+            QVERIFY2(!ids.contains(action.id), qPrintable(action.id));
+            ids.append(action.id);
+        }
     }
 
     void remembersThemeAndWrap() {

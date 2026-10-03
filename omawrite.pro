@@ -20,6 +20,7 @@ HEADERS += \
     src/vault.h \
     src/themes.h \
     src/spellchecker.h \
+    src/keymap.h \
     src/preview.h
 
 SOURCES += \
@@ -29,6 +30,7 @@ SOURCES += \
     src/systemtheme.cpp \
     src/vault.cpp \
     src/themes.cpp \
+    src/keymap.cpp \
     src/preview.cpp
 
 RESOURCES += src/resources.qrc

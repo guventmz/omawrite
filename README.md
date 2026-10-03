@@ -33,7 +33,11 @@ selection through a fuzzy folder picker. Arrows, `h`/`l`, `gg`/`G` and `Escape` 
 Every picker also moves with `Ctrl+N` / `Ctrl+P`. Notes and
 folders can also be dragged onto folders. Renaming a note rewrites the `[[links]]` to it.
 
-`Ctrl+,` shows every shortcut, grouped, with a filter.
+`Ctrl+,` shows every shortcut, grouped, with a filter, and is where you change them: pick
+one (arrows, `Ctrl+N` / `Ctrl+P`, or type to filter), press `Enter` or click its keys, then
+press the new keys. Keys another action had move over (the sheet says from where);
+`Backspace` on an empty filter restores the default. Changed shortcuts are marked with a dot.
+The vim and file tree keys are listed there for reference.
 
 `Ctrl+Alt+V` (`⌥⌘V`) turns on vim mode: normal, insert and visual modes with the usual
 motions, operators, text objects, counts, `.` repeat, `/` search and `:w` / `:q`. On macOS,

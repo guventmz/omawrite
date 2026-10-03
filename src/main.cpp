@@ -15,6 +15,7 @@
 #include "backend.h"
 #include "systemtheme.h"
 #include "vault.h"
+#include "keymap.h"
 
 namespace {
 // Finder hands documents to the app as FileOpen events rather than arguments,
@@ -94,6 +95,8 @@ int main(int argc, char *argv[]) {
     backend.setVault(&vault);
     engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+    Keymap keymap(&app);
+    engine.rootContext()->setContextProperty(QStringLiteral("keymap"), &keymap);
 
     engine.load(QUrl(QStringLiteral("qrc:/Main.qml")));
     if (engine.rootObjects().isEmpty()) {

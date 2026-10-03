@@ -490,14 +490,15 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+S"
+        sequences: keymap.bindings.save
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.save()
     }
 
     Shortcut {
-        // Command+H hides the app on macOS, so replace uses Option+Command+F there.
-        sequence: win.macOS ? "Ctrl+Alt+F" : "Ctrl+H"
+        sequences: keymap.bindings.replace
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: {
             searchOpen = true;
@@ -508,213 +509,232 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+B"
+        sequences: keymap.bindings.bold
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: editor.wrapSelection("**", "**")
     }
 
     Shortcut {
-        sequence: "Ctrl+I"
+        sequences: keymap.bindings.italic
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: editor.wrapSelection("*", "*")
     }
 
     Shortcut {
-        sequence: "Ctrl+K"
+        sequences: keymap.bindings.markdownLink
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: editor.insertLink()
     }
 
     Shortcut {
-        // "?" is Shift+/ on most keyboards, so match it every way it arrives.
-        sequences: ["Ctrl+?", "Ctrl+Shift+?", "Ctrl+Shift+/"]
+        sequences: keymap.bindings.shortcuts
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
     }
 
     Shortcut {
-        sequence: "Ctrl+O"
+        sequences: keymap.bindings.open
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.openDialog()
     }
 
     Shortcut {
-        sequence: "Ctrl+N"
+        sequences: keymap.bindings.newWindow
         context: Qt.ApplicationShortcut
-        enabled: !win.pickerOpen
+        enabled: !keymap.recording && !win.pickerOpen
         onActivated: backend.newWindow()
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+S"
+        sequences: keymap.bindings.saveAs
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.saveAsDialog()
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+P"
+        sequences: keymap.bindings.print
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.printDocument()
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+P"
+        sequences: keymap.bindings.preview
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.previewInBrowser()
     }
 
     Shortcut {
-        sequence: "Ctrl+P"
+        sequences: keymap.bindings.goToNote
         context: Qt.ApplicationShortcut
-        enabled: !win.pickerOpen
+        enabled: !keymap.recording && !win.pickerOpen
         onActivated: win.openNotePicker("open")
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+F"
+        sequences: keymap.bindings.searchNotes
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.openNotePicker("text")
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+B"
+        sequences: keymap.bindings.backlinks
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.openNotePicker("backlinks")
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+O"
+        sequences: keymap.bindings.chooseVault
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: vaultFolderDialog.open()
     }
 
     Shortcut {
-        sequences: ["Ctrl+Return", "Ctrl+Enter"]
+        sequences: keymap.bindings.followLink
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: win.followLinkAt(editor.cursorPosition)
     }
 
     Shortcut {
-        sequences: win.macOS ? ["Ctrl+["] : ["Ctrl+[", "Alt+Left"]
+        sequences: keymap.bindings.back
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.goBack()
     }
 
     Shortcut {
-        sequences: win.macOS ? ["Ctrl+]"] : ["Ctrl+]", "Alt+Right"]
+        sequences: keymap.bindings.forward
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.goForward()
     }
 
     Shortcut {
-        // On macOS "Meta" is the Control key, and Control+Command+F is the
-        // system's own fullscreen chord.
-        sequences: win.macOS ? ["Ctrl+Meta+F"] : ["Meta+F", "F11"]
+        sequences: keymap.bindings.fullscreen
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: toggleFullScreen()
     }
 
     Shortcut {
-        sequences: ["Ctrl+=", "Ctrl++"]
+        sequences: keymap.bindings.textBigger
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomText(1)
     }
 
     Shortcut {
-        sequence: "Ctrl+-"
+        sequences: keymap.bindings.textSmaller
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomText(-1)
     }
 
     Shortcut {
-        sequence: "Ctrl+0"
+        sequences: keymap.bindings.textReset
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomText(0)
     }
 
     Shortcut {
-        sequences: ["Ctrl+Alt+=", "Ctrl+Alt++"]
+        sequences: keymap.bindings.interfaceBigger
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomInterface(1)
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+-"
+        sequences: keymap.bindings.interfaceSmaller
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomInterface(-1)
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+0"
+        sequences: keymap.bindings.interfaceReset
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.zoomInterface(0)
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+T"
+        sequences: keymap.bindings.theme
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: themePicker.opened ? themePicker.close() : themePicker.open()
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+L"
+        sequences: keymap.bindings.wrap
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.cycleWrapMode()
     }
 
     Shortcut {
-        sequence: "Ctrl+Alt+V"
+        sequences: keymap.bindings.vimMode
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: backend.vimMode = !backend.vimMode
     }
 
     Shortcut {
-        sequence: "Ctrl+,"
-        context: Qt.ApplicationShortcut
-        onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
-    }
-
-    Shortcut {
-        sequence: "Ctrl+Shift+E"
+        sequences: keymap.bindings.fileTree
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.toggleFileTree()
     }
 
     Shortcut {
-        sequence: "Ctrl+Meta+D"
+        sequences: keymap.bindings.lookUp
         context: Qt.ApplicationShortcut
-        enabled: win.macOS
+        enabled: !keymap.recording
         onActivated: win.lookUpAtCursor()
     }
 
     Shortcut {
-        sequence: "Ctrl+W"
+        sequences: keymap.bindings.closeWindow
         context: Qt.ApplicationShortcut
-        enabled: win.macOS
+        enabled: !keymap.recording
         onActivated: win.close()
     }
 
     Shortcut {
-        sequence: "Ctrl+M"
+        sequences: keymap.bindings.minimize
         context: Qt.ApplicationShortcut
-        enabled: win.macOS
+        enabled: !keymap.recording
         onActivated: win.showMinimized()
     }
 
     Shortcut {
-        sequence: "Ctrl+Z"
+        sequences: keymap.bindings.undo
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: editor.undo()
     }
 
     Shortcut {
-        sequences: ["Ctrl+Shift+Z", "Ctrl+Y"]
+        sequences: keymap.bindings.redo
+        enabled: !keymap.recording
         context: Qt.WindowShortcut
         onActivated: editor.redo()
     }
 
     Shortcut {
-        sequence: "Ctrl+F"
+        sequences: keymap.bindings.find
+        enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: {
             searchOpen = true;
@@ -724,9 +744,9 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+G"
+        sequences: keymap.bindings.findNext
         context: Qt.ApplicationShortcut
-        enabled: win.searchOpen
+        enabled: !keymap.recording && win.searchOpen
         onActivated: win.moveSearch(1)
     }
 

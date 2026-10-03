@@ -10,6 +10,7 @@ SOURCES += \
     ../src/markdownhighlighter.cpp \
     ../src/vault.cpp \
     ../src/themes.cpp \
+    ../src/keymap.cpp \
     ../src/preview.cpp
 HEADERS += \
     ../src/backend.h \
@@ -17,6 +18,7 @@ HEADERS += \
     ../src/vault.h \
     ../src/themes.h \
     ../src/spellchecker.h \
+    ../src/keymap.h \
     ../src/preview.h
 
 QT += widgets printsupport quickcontrols2 quickdialogs2
