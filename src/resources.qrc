@@ -11,7 +11,6 @@
         <file alias="ThemePicker.qml">ThemePicker.qml</file>
         <file alias="FileTree.qml">FileTree.qml</file>
         <file alias="ShortcutSheet.qml">ShortcutSheet.qml</file>
-        <file alias="PreviewWindow.qml">PreviewWindow.qml</file>
         <file alias="EditorMutations.js">EditorMutations.js</file>
         <file alias="Vim.js">Vim.js</file>
         <file alias="fonts/IBMPlexMono-Regular.ttf">../fonts/IBMPlexMono-Regular.ttf</file>

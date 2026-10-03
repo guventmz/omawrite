@@ -51,12 +51,13 @@ Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
   scroll sideways). Also in the font popup.
 - Fenced code blocks get light syntax colors in a monospace font, and `$inline$` and
   `$$display$$` math are colored and kept verbatim, so Markdown never mangles them.
-- `Ctrl+Shift+P` (or the eye button) opens a preview window beside the editor with the note
-  rendered in the same theme, font and column: formatted Markdown, typeset math (KaTeX)
-  and highlighted code. It follows your typing live and closes with the same shortcut.
+- `Ctrl+Shift+P` (or the eye button) opens the note rendered in your browser, in the same
+  theme, font and column: formatted Markdown, typeset math (KaTeX) and highlighted code.
+  On macOS it gets its own browser window beside the editor (Chrome, Brave, Edge, Vivaldi
+  or Safari; macOS asks once to let Omawrite control the browser), Omawrite keeps focus,
+  and saving reloads it.
   The page loads marked, KaTeX and highlight.js from cdnjs, so it needs a connection;
-  offline it shows the plain text. Without QtWebView (`qt6-webview`), the preview opens
-  in the default browser instead.
+  offline it shows the plain text.
 
 ## Spelling (macOS)
 

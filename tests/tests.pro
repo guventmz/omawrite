@@ -24,7 +24,7 @@ QT += widgets printsupport quickcontrols2 quickdialogs2
 macx: CONFIG -= app_bundle
 
 macx {
-    OBJECTIVE_SOURCES += ../src/spellchecker_mac.mm
+    OBJECTIVE_SOURCES += ../src/spellchecker_mac.mm ../src/macintegration_mac.mm
     QMAKE_OBJECTIVE_CFLAGS += -fobjc-arc
     LIBS += -framework AppKit
 } else {

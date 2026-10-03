@@ -7,13 +7,6 @@ TEMPLATE = app
 # The desktop portal (theme and text scale) is only reachable over D-Bus on Linux.
 !macx: QT += dbus
 
-# The preview window uses the platform's web view (WebKit on macOS); without
-# QtWebView the preview opens in the default browser instead.
-qtHaveModule(webview) {
-    QT += webview
-    DEFINES += HAVE_WEBVIEW
-}
-
 macx {
     TARGET = Omawrite
     ICON = macos/Omawrite.icns
@@ -27,6 +20,7 @@ HEADERS += \
     src/vault.h \
     src/themes.h \
     src/spellchecker.h \
+    src/macintegration.h \
     src/preview.h
 
 SOURCES += \
@@ -41,7 +35,7 @@ SOURCES += \
 RESOURCES += src/resources.qrc
 
 macx {
-    OBJECTIVE_SOURCES += src/spellchecker_mac.mm
+    OBJECTIVE_SOURCES += src/spellchecker_mac.mm src/macintegration_mac.mm
     QMAKE_OBJECTIVE_CFLAGS += -fobjc-arc
     LIBS += -framework AppKit
 } else {

@@ -11,9 +11,6 @@
 #include <QFile>
 #include <QFileOpenEvent>
 #include <QProcess>
-#ifdef HAVE_WEBVIEW
-#include <QtWebView>
-#endif
 
 #include "backend.h"
 #include "systemtheme.h"
@@ -46,9 +43,6 @@ private:
 }
 
 int main(int argc, char *argv[]) {
-#ifdef HAVE_WEBVIEW
-    QtWebView::initialize();
-#endif
     QApplication app(argc, argv);
     app.setApplicationName(QStringLiteral("omawrite"));
     app.setDesktopFileName(QStringLiteral("omawrite"));

@@ -13,6 +13,7 @@
 #include "preview.h"
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QProcess>
 
 class OmawriteTest : public QObject {
     Q_OBJECT
@@ -602,6 +603,37 @@ QtObject {
     void runsVimCommands() {
         QCOMPARE(runVim(QStringLiteral("a"), 0, {":"}).value(QStringLiteral("message")).toString(), QStringLiteral("command"));
         QCOMPARE(runVim(QStringLiteral("a"), 0, {"/"}).value(QStringLiteral("message")).toString(), QStringLiteral("search"));
+    }
+
+    void scriptsABrowserPreviewWindow() {
+        const QString url = QStringLiteral("file:///tmp/My%20Note.html");
+        const QRect frame(100, 50, 800, 600);
+        QVERIFY(Backend::browserWindowScript(QStringLiteral("org.mozilla.firefox"), url, frame, false).isEmpty());
+        const QString chrome = Backend::browserWindowScript(QStringLiteral("com.google.Chrome"), url, frame, false);
+        QVERIFY(chrome.contains(QStringLiteral("make new window")));
+        QVERIFY(chrome.contains(QStringLiteral("set bounds of preview to {100, 50, 900, 650}")));
+        QVERIFY(Backend::browserWindowScript(QStringLiteral("com.apple.Safari"), url, frame, true)
+                    .contains(QStringLiteral("    return")));
+
+#ifdef Q_OS_MACOS
+        // Compiling checks the syntax and each browser's dictionary without running anything.
+        const QList<QPair<QString, QString>> browsers = {
+            {QStringLiteral("com.apple.Safari"), QStringLiteral("/Applications/Safari.app")},
+            {QStringLiteral("com.google.Chrome"), QStringLiteral("/Applications/Google Chrome.app")},
+            {QStringLiteral("com.brave.Browser"), QStringLiteral("/Applications/Brave Browser.app")}};
+        for (const auto &[browser, app] : browsers) {
+            if (!QFileInfo::exists(app))
+                continue;
+            QTemporaryDir output;
+            QProcess compile;
+            compile.start(QStringLiteral("/usr/bin/osacompile"),
+                          {QStringLiteral("-o"), output.filePath(QStringLiteral("preview.scpt")),
+                           QStringLiteral("-e"), Backend::browserWindowScript(browser, url, frame, false)});
+            QVERIFY(compile.waitForFinished(20000));
+            QVERIFY2(compile.exitCode() == 0, qPrintable(browser + QLatin1Char(' ')
+                                                          + QString::fromUtf8(compile.readAllStandardError())));
+        }
+#endif
     }
 
     void remembersThemeAndWrap() {

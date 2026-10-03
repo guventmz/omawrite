@@ -171,12 +171,10 @@ img { max-width: 100%; }
         .arg(p.selection, p.keyword, p.string, p.comment, p.number);
 }
 
-// window.omawriteRender(note) draws the page; the editor calls it again with
-// fresh text while the preview window is open, so the scroll position holds.
 const char *renderScript = R"(
-window.omawriteRender = function (note) {
+(function () {
+  var note = JSON.parse(document.getElementById('note').textContent);
   var content = document.getElementById('content');
-  content.textContent = '';
   if (typeof marked === 'undefined') {
     var pre = document.createElement('pre');
     pre.textContent = note.source;
@@ -195,25 +193,20 @@ window.omawriteRender = function (note) {
   content.innerHTML = html;
   if (typeof hljs !== 'undefined')
     content.querySelectorAll('pre code').forEach(function (block) { hljs.highlightElement(block); });
-};
-window.omawriteRender(JSON.parse(document.getElementById('note').textContent));
+})();
 )";
 }
 
-QString Preview::noteJson(const QString &markdown) {
+QString Preview::html(const QString &markdown, const QString &title, const QUrl &baseUrl,
+                      const Style &style) {
     QJsonArray math;
     const QString protectedMarkdown = protectMath(markdown, &math);
     const QJsonObject note{{QStringLiteral("markdown"), protectedMarkdown},
                            {QStringLiteral("source"), markdown},
                            {QStringLiteral("math"), math}};
     // A note mentioning "</script>" must not end the data block early.
-    return QString::fromUtf8(QJsonDocument(note).toJson(QJsonDocument::Compact))
-        .replace(QStringLiteral("</"), QStringLiteral("<\\/"));
-}
-
-QString Preview::html(const QString &markdown, const QString &title, const QUrl &baseUrl,
-                      const Style &style) {
-    const QString noteJson = Preview::noteJson(markdown);
+    const QString noteJson = QString::fromUtf8(QJsonDocument(note).toJson(QJsonDocument::Compact))
+                                 .replace(QStringLiteral("</"), QStringLiteral("<\\/"));
 
     QString page;
     page += QStringLiteral("<!doctype html>\n<html><head><meta charset=\"utf-8\">\n");
