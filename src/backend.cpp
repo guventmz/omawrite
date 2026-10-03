@@ -36,9 +36,6 @@
 
 #include "markdownhighlighter.h"
 #include "preview.h"
-#ifdef Q_OS_MACOS
-#include "macintegration.h"
-#endif
 #include "spellchecker.h"
 
 constexpr qreal typoraLineHeightPercent = 140;
@@ -584,60 +581,6 @@ void Backend::printDocument() {
     }
 }
 
-namespace {
-QString appleScriptString(const QString &text) {
-    return QLatin1Char('"') + QString(text).replace(QLatin1Char('\\'), QStringLiteral("\\\\"))
-                                  .replace(QLatin1Char('"'), QStringLiteral("\\\"")) + QLatin1Char('"');
-}
-
-}
-
-// AppleScript that shows the page in its own browser window: the window
-// already showing it is reloaded and moved, otherwise a new one opens.
-// With reloadOnly, a closed preview stays closed. Empty for browsers without
-// the scripting support this needs.
-QString Backend::browserWindowScript(const QString &browserId, const QString &url, const QRect &frame,
-                            bool reloadOnly) {
-    static const QStringList chromium = {
-        QStringLiteral("com.google.Chrome"), QStringLiteral("com.google.Chrome.canary"),
-        QStringLiteral("com.brave.Browser"), QStringLiteral("com.microsoft.edgemac"),
-        QStringLiteral("com.vivaldi.Vivaldi"), QStringLiteral("org.chromium.Chromium")};
-    static const QStringList safari = {QStringLiteral("com.apple.Safari"),
-                                       QStringLiteral("com.apple.SafariTechnologyPreview")};
-    const bool isChromium = chromium.contains(browserId);
-    if (!isChromium && !safari.contains(browserId))
-        return {};
-
-    const QString tab = isChromium ? QStringLiteral("active tab") : QStringLiteral("current tab");
-    const QString bounds = frame.isValid()
-        ? QStringLiteral("set bounds of preview to {%1, %2, %3, %4}")
-              .arg(frame.left()).arg(frame.top()).arg(frame.right() + 1).arg(frame.bottom() + 1)
-        : QString();
-    const QString opening = reloadOnly ? QStringLiteral("return")
-        : isChromium ? QStringLiteral("set preview to make new window\n"
-                                      "    set URL of active tab of preview to page")
-                     : QStringLiteral("make new document with properties {URL:page}\n"
-                                      "    set preview to front window");
-    const QString reloading = isChromium ? QStringLiteral("tell active tab of preview to reload")
-                                         : QStringLiteral("set URL of current tab of preview to page");
-    return QStringLiteral(R"(set page to %1
-tell application id %2
-  set preview to missing value
-  repeat with candidate in windows
-    try
-      if (URL of %3 of candidate) is page then set preview to candidate
-    end try
-  end repeat
-  if preview is missing value then
-    %4
-  else
-    %5
-  end if
-  %6
-end tell)")
-        .arg(appleScriptString(url), appleScriptString(browserId), tab, opening, reloading, bounds);
-}
-
 // Writes the note as a themed HTML page in the cache and returns its URL. Each
 // note keeps one page there, so writing again just refreshes it.
 QUrl Backend::writePreview() {
@@ -668,62 +611,12 @@ QUrl Backend::writePreview() {
     return QUrl::fromLocalFile(path);
 }
 
-// Opens the rendered note in its own browser window, placed at frame (screen
-// coordinates) when the browser allows it, and keeps Omawrite in front.
-void Backend::previewInBrowser(const QRect &frame) {
+void Backend::previewInBrowser() {
     const QUrl page = writePreview();
     if (page.isEmpty())
         return;
-    m_previewPage = page;
-    m_previewFrame = frame;
-    showBrowserPreview(false);
-}
-
-// After a save, the open preview window catches up; a closed one stays closed.
-void Backend::refreshBrowserPreview() {
-    if (m_previewPage.isEmpty() || !sameFile(m_previewPage, writePreview()))
-        return;
-    showBrowserPreview(true);
-}
-
-void Backend::showBrowserPreview(bool reloadOnly) {
-    const QString url = m_previewPage.toString(QUrl::FullyEncoded);
-#ifdef Q_OS_MACOS
-    const QString browserId = MacIntegration::defaultBrowserId();
-    const QString script = browserWindowScript(browserId, url, m_previewFrame, reloadOnly);
-    if (!script.isEmpty()) {
-        auto *osascript = new QProcess(this);
-        connect(osascript, &QProcess::finished, this, [this, osascript, reloadOnly](int exitCode) {
-            const QString error = QString::fromUtf8(osascript->readAllStandardError());
-            osascript->deleteLater();
-            if (exitCode != 0 && !reloadOnly) {
-                // Most likely Automation permission was declined.
-                QDesktopServices::openUrl(m_previewPage);
-                setStatus(error.contains(QStringLiteral("-1743"))
-                              ? QStringLiteral("Preview opened in a tab; allow Omawrite to control your "
-                                               "browser in Privacy & Security > Automation for a window")
-                              : QStringLiteral("Opened preview in browser"));
-            }
-            MacIntegration::activateApp();
-        });
-        osascript->start(QStringLiteral("/usr/bin/osascript"), {QStringLiteral("-e"), script});
-        if (!reloadOnly)
-            setStatus(QStringLiteral("Opened preview window"));
-        return;
-    }
-    if (browserId == QStringLiteral("org.mozilla.firefox")) {
-        if (!reloadOnly)
-            QProcess::startDetached(MacIntegration::defaultBrowserPath()
-                                        + QStringLiteral("/Contents/MacOS/firefox"),
-                                    {QStringLiteral("-new-window"), url});
-        QTimer::singleShot(400, this, [] { MacIntegration::activateApp(); });
-        return;
-    }
-#endif
-    if (!reloadOnly) {
-        QDesktopServices::openUrl(m_previewPage);
-        setStatus(QStringLiteral("Opened preview in browser"));
-    }
+    QDesktopServices::openUrl(page);
+    setStatus(QStringLiteral("Opened preview in browser"));
 }
 
 bool Backend::sameFile(const QUrl &a, const QUrl &b) {

@@ -292,21 +292,6 @@ ApplicationWindow {
         forwardStack = forwardStack.filter(keep);
     }
 
-    // The preview gets its own browser window beside the editor, on whichever
-    // side has room (overlapping the right edge when neither does).
-    function openPreview() {
-        var screenLeft = win.screen.virtualX;
-        var screenRight = screenLeft + win.screen.width;
-        var spaceRight = screenRight - (win.x + win.width) - 8;
-        var spaceLeft = win.x - screenLeft - 8;
-        var minimum = scaledSize(480);
-        var width = Math.max(minimum, Math.min(scaledSize(960), Math.max(spaceRight, spaceLeft)));
-        var x = spaceRight >= minimum ? win.x + win.width + 8
-              : spaceLeft >= minimum ? win.x - width - 8
-              : screenRight - width;
-        backend.previewInBrowser(Qt.rect(x, win.y, width, win.height));
-    }
-
     function refreshBacklinkCount() {
         if (!vault.contains(backend.fileUrl)) {
             backlinkCount = 0;
@@ -514,7 +499,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+Shift+P"
         context: Qt.ApplicationShortcut
-        onActivated: win.openPreview()
+        onActivated: backend.previewInBrowser()
     }
 
     Shortcut {
@@ -713,7 +698,6 @@ ApplicationWindow {
 
         function onSaveSucceeded() {
             win.refreshBacklinkCount();
-            backend.refreshBrowserPreview();
             win.awaitingPendingSave = false;
             if (win.pendingAction !== "")
                 win.completePendingAction();
@@ -1637,7 +1621,7 @@ FileTree {
                 iconName: "preview"
                 iconColor: win.mutedColor
                 tooltip: "Preview in Browser"
-                onClicked: win.openPreview()
+                onClicked: backend.previewInBrowser()
             }
 
             FooterIconButton {

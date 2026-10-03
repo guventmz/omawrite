@@ -2,7 +2,6 @@
 
 #include <QObject>
 #include <QPointer>
-#include <QRect>
 #include <QByteArray>
 #include <QFileSystemWatcher>
 #include <QString>
@@ -111,11 +110,8 @@ public:
     Q_INVOKABLE void reloadFromDisk();
     Q_INVOKABLE void keepExternalVersion();
     Q_INVOKABLE void printDocument();
-    Q_INVOKABLE void previewInBrowser(const QRect &frame = QRect());
-    Q_INVOKABLE void refreshBrowserPreview();
-    static QString browserWindowScript(const QString &browserId, const QString &url,
-                                       const QRect &frame, bool reloadOnly);
-    Q_INVOKABLE QUrl writePreview();
+    Q_INVOKABLE void previewInBrowser();
+    QUrl writePreview();
     Q_INVOKABLE void fileMoved(const QUrl &from, const QUrl &to);
     Q_INVOKABLE void closeDocument();
     Q_INVOKABLE void showStatus(const QString &status) { setStatus(status); }
@@ -217,9 +213,6 @@ private:
     bool m_spellCheckEnabled = true;
     bool m_autocorrectEnabled = false;
     int m_caretPosition = -1;
-    QUrl m_previewPage;
-    QRect m_previewFrame;
-    void showBrowserPreview(bool reloadOnly);
     bool m_vimMode = false;
     bool isProseAt(int position) const;
     QString m_editorFont;

@@ -31,7 +31,7 @@ Popup {
             ["Back / forward", "⌘[  ⌘]", "Ctrl+[  Ctrl+]"],
             ["Insert link", "[[", "[["],
             ["File tree", "⇧⌘E", "Ctrl+Shift+E"],
-            ["Preview (browser window)", "⇧⌘P", "Ctrl+Shift+P"],
+            ["Preview in browser", "⇧⌘P", "Ctrl+Shift+P"],
             ["Choose vault folder", "⇧⌘O", "Ctrl+Shift+O"],
             ["Down / up in any list", "⌃n  ⌃p", "Ctrl+N  Ctrl+P"]
         ]},
