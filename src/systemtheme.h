@@ -2,7 +2,9 @@
 
 #include <QObject>
 
+#ifdef QT_DBUS_LIB
 class QDBusVariant;
+#endif
 
 class SystemTheme : public QObject {
     Q_OBJECT
@@ -20,9 +22,11 @@ signals:
 public slots:
     void refresh();
 
+#ifdef QT_DBUS_LIB
 private slots:
     void handlePortalSettingChanged(const QString &nameSpace, const QString &key,
                                     const QDBusVariant &value);
+#endif
 
 private:
     bool detectDarkMode() const;

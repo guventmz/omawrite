@@ -9,9 +9,37 @@
 #include <QUrl>
 #include <QWindow>
 #include <QFile>
+#include <QFileOpenEvent>
+#include <QProcess>
 
 #include "backend.h"
 #include "systemtheme.h"
+
+namespace {
+// Finder hands documents to the app as FileOpen events rather than arguments,
+// both at launch and while it is running. An untouched window takes the file;
+// otherwise it opens in a new window, like Ctrl+N does.
+class FileOpenFilter : public QObject {
+public:
+    FileOpenFilter(Backend *backend, QObject *parent) : QObject(parent), m_backend(backend) {}
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override {
+        if (event->type() != QEvent::FileOpen)
+            return QObject::eventFilter(watched, event);
+
+        const QString path = static_cast<QFileOpenEvent *>(event)->file();
+        if (m_backend->fileUrl().isEmpty() && !m_backend->modified())
+            m_backend->open(QUrl::fromLocalFile(path));
+        else
+            QProcess::startDetached(QCoreApplication::applicationFilePath(), {path});
+        return true;
+    }
+
+private:
+    Backend *m_backend;
+};
+}
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
@@ -74,6 +102,8 @@ int main(int argc, char *argv[]) {
     const QStringList args = app.arguments();
     if (args.size() > 1 && !backend.modified())
         backend.open(QUrl::fromLocalFile(args.at(1)));
+
+    app.installEventFilter(new FileOpenFilter(&backend, &app));
 
     return app.exec();
 }

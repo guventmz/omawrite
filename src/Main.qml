@@ -16,6 +16,9 @@ ApplicationWindow {
     title: (backend.modified ? "* " : "") + backend.fileName + " - Omawrite"
 
     readonly property bool darkMode: backend.darkMode
+    // Qt maps "Ctrl" to Command on macOS, so most shortcuts carry over as-is;
+    // only the ones macOS reserves or spells differently need their own keys.
+    readonly property bool macOS: Qt.platform.os === "osx"
     readonly property color pageColor: backend.themeBackground
     readonly property color textColor: backend.themeForeground
     readonly property color strongTextColor: backend.themeForeground
@@ -145,7 +148,8 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+H"
+        // Command+H hides the app on macOS, so replace uses Option+Command+F there.
+        sequence: win.macOS ? "Ctrl+Alt+F" : "Ctrl+H"
         context: Qt.ApplicationShortcut
         onActivated: {
             searchOpen = true;
@@ -204,9 +208,25 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequences: ["Meta+F", "F11"]
+        // On macOS "Meta" is the Control key, and Control+Command+F is the
+        // system's own fullscreen chord.
+        sequences: win.macOS ? ["Ctrl+Meta+F"] : ["Meta+F", "F11"]
         context: Qt.ApplicationShortcut
         onActivated: toggleFullScreen()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+W"
+        context: Qt.ApplicationShortcut
+        enabled: win.macOS
+        onActivated: win.close()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+M"
+        context: Qt.ApplicationShortcut
+        enabled: win.macOS
+        onActivated: win.showMinimized()
     }
 
     Shortcut {
@@ -332,7 +352,9 @@ ApplicationWindow {
         standardButtons: Dialog.Close
         anchors.centerIn: parent
         contentItem: Label {
-            text: "Ctrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
+            text: win.macOS
+                ? "⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                : "Ctrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
     }

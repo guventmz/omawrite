@@ -1,0 +1,29 @@
+#!/usr/bin/env sh
+set -eu
+
+ROOT="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
+DIST_DIR="$ROOT/build/dist"
+APP="$DIST_DIR/Omawrite.app"
+
+if [ "$(uname -s)" != Darwin ]; then
+  echo "bin/bundle builds the macOS app bundle; use bin/install on Linux." >&2
+  exit 1
+fi
+
+if ! command -v macdeployqt >/dev/null 2>&1; then
+  echo "macdeployqt is required; install Qt with: brew install qt" >&2
+  exit 1
+fi
+
+"$ROOT/bin/build"
+
+# Deploy into a copy so later incremental builds never link against the
+# frameworks macdeployqt copies into the bundle.
+rm -rf "$DIST_DIR"
+mkdir -p "$DIST_DIR"
+ditto "$ROOT/build/Omawrite.app" "$APP"
+
+macdeployqt "$APP" -qmldir="$ROOT/src" -always-overwrite "$@"
+codesign --force --deep --sign - "$APP"
+
+echo "Bundled $APP"

@@ -39,5 +39,27 @@ Omawrite at the size it is designed around; larger and smaller sizes scale from 
 - Qt 6: `qt6-base`, `qt6-declarative`, `qt6-quickcontrols2`
 - `xdg-desktop-portal` and a portal backend
 
+## macOS
+
+Omawrite also builds as a native `Omawrite.app` on macOS 14 or later.
+
+```sh
+brew install qt
+bin/build     # build/Omawrite.app, linked against Homebrew Qt (for development)
+bin/test      # unit tests
+bin/bundle    # build/dist/Omawrite.app, self-contained via macdeployqt
+bin/install   # bundles and copies the app to /Applications
+```
+
+On macOS, shortcuts use `⌘` wherever Linux uses `Ctrl`, with a few exceptions:
+
+- `⌥⌘F` opens find and replace, since `⌘H` hides the app.
+- `⌃⌘F` toggles fullscreen.
+- `⌘W` closes the window and `⌘M` minimizes it.
+
+Dark and light mode follow the system appearance. Markdown files open from Finder
+and "Open With"; a file opened while the window holds a document gets a new window.
+Text size stays at the default, since macOS has no desktop text scale setting.
+
 The IBM Plex Mono font is bundled under the SIL Open Font License 1.1; see
 `fonts/OFL.txt`. The font is copyright IBM Corp.
