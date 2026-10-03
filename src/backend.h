@@ -40,6 +40,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool spellCheckAvailable READ spellCheckAvailable CONSTANT)
     Q_PROPERTY(bool spellCheckEnabled READ spellCheckEnabled WRITE setSpellCheckEnabled NOTIFY spellCheckChanged)
     Q_PROPERTY(bool autocorrectEnabled READ autocorrectEnabled WRITE setAutocorrectEnabled NOTIFY spellCheckChanged)
+    Q_PROPERTY(bool vimMode READ vimMode WRITE setVimMode NOTIFY vimModeChanged)
     Q_PROPERTY(QString editorFont READ editorFont WRITE setEditorFont NOTIFY editorFontChanged)
     Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
 
@@ -77,6 +78,8 @@ public:
     void setSpellCheckEnabled(bool enabled);
     bool autocorrectEnabled() const { return m_autocorrectEnabled; }
     void setAutocorrectEnabled(bool enabled);
+    bool vimMode() const { return m_vimMode; }
+    void setVimMode(bool enabled);
     Q_INVOKABLE QVariantMap wordAt(const QString &text, int position) const;
     Q_INVOKABLE bool isMisspelled(const QString &word);
     Q_INVOKABLE QStringList spellingGuesses(const QString &word);
@@ -140,6 +143,7 @@ signals:
     void wrapModeChanged();
     void spellCheckChanged();
     void spellingChanged();
+    void vimModeChanged();
     void interfaceZoomChanged();
     void themeColorsChanged();
     void editorFontChanged();
@@ -208,6 +212,7 @@ private:
     bool m_spellCheckEnabled = true;
     bool m_autocorrectEnabled = false;
     int m_caretPosition = -1;
+    bool m_vimMode = false;
     bool isProseAt(int position) const;
     QString m_editorFont;
     QFileSystemWatcher m_themeWatcher;

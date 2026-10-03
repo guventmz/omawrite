@@ -61,7 +61,23 @@ Popup {
             ["Text size", "⌘=  ⌘−  ⌘0", "Ctrl+=  Ctrl+-  Ctrl+0"],
             ["Interface size", "⌥⌘=  ⌥⌘−  ⌥⌘0", "Ctrl+Alt+=  -  0"],
             ["Fullscreen", "⌃⌘F", "F11"],
-            ["This sheet", "⌘,  ⌘?", "Ctrl+,  Ctrl+?"]
+            ["This sheet", "⌘,  ⌘?", "Ctrl+,  Ctrl+?"],
+            ["Vim mode on / off", "⌥⌘V", "Ctrl+Alt+V"]
+        ]},
+        { title: "Vim (when on)", items: [
+            ["Insert / append", "i a I A o O", "i a I A o O"],
+            ["Back to normal", "Esc  ⌃[", "Esc  Ctrl+["],
+            ["Move", "h j k l  w b e  0 ^ $", "h j k l  w b e  0 ^ $"],
+            ["Jump", "gg G  { }  %  f t ; ,", "gg G  { }  %  f t ; ,"],
+            ["Half page", "⌃d  ⌃u", "Ctrl+D  Ctrl+U"],
+            ["Delete / change / yank", "d c y + motion", "d c y + motion"],
+            ["Whole line", "dd cc yy >> <<", "dd cc yy >> <<"],
+            ["Inside / around", "iw aw i\" i( i[ i{ ip", "iw aw i\" i( i[ i{ ip"],
+            ["Edit", "x r ~ J p P", "x r ~ J p P"],
+            ["Undo / redo / repeat", "u  ⌃r  .", "u  Ctrl+R  ."],
+            ["Visual / line", "v  V", "v  V"],
+            ["Search", "/  n N  * #", "/  n N  * #"],
+            ["Save, close, go to line", ":w :q :wq :q! :42", ":w :q :wq :q! :42"]
         ]},
         { title: "File", items: [
             ["Save", "⌘S", "Ctrl+S"],

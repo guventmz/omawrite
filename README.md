@@ -32,6 +32,10 @@ folders can also be dragged onto folders. Renaming a note rewrites the `[[links]
 
 `Ctrl+,` shows every shortcut, grouped, with a filter.
 
+`Ctrl+Alt+V` (`⌥⌘V`) turns on vim mode: normal, insert and visual modes with the usual
+motions, operators, text objects, counts, `.` repeat, `/` search and `:w` / `:q`. On macOS,
+vim's Ctrl keys are the Control key, so `⌘` shortcuts keep working alongside it.
+
 Moving to another note saves the one you leave, so following links never stops to ask.
 Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 

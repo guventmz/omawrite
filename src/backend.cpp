@@ -47,6 +47,7 @@ const QString themeSetting = QStringLiteral("view/theme");
 const QString wrapModeSetting = QStringLiteral("view/wrap");
 const QString spellCheckSetting = QStringLiteral("spelling/check");
 const QString autocorrectSetting = QStringLiteral("spelling/autocorrect");
+const QString vimModeSetting = QStringLiteral("editor/vim");
 
 bool isWordCharacter(QChar c) {
     return c.isLetterOrNumber() || c == QLatin1Char('\'') || c == QChar(0x2019);
@@ -119,6 +120,7 @@ Backend::Backend(QObject *parent) : QObject(parent) {
     const QString savedWrap = QSettings().value(wrapModeSetting).toString();
     m_wrapMode = wrapModes.contains(savedWrap) ? savedWrap : wrapModes.constFirst();
     m_spellChecker = std::make_unique<SpellChecker>();
+    m_vimMode = QSettings().value(vimModeSetting, false).toBool();
     m_spellCheckEnabled = QSettings().value(spellCheckSetting, true).toBool();
     m_autocorrectEnabled = QSettings().value(autocorrectSetting,
                                              SpellChecker::systemAutocorrectEnabled()).toBool();
@@ -257,6 +259,15 @@ void Backend::cycleWrapMode() {
                                        QStringLiteral("Wrap: window width"),
                                        QStringLiteral("Wrap: off")};
     setStatus(labels.at(next));
+}
+
+void Backend::setVimMode(bool enabled) {
+    if (enabled == m_vimMode)
+        return;
+    m_vimMode = enabled;
+    QSettings().setValue(vimModeSetting, enabled);
+    setStatus(enabled ? QStringLiteral("Vim mode on") : QStringLiteral("Vim mode off"));
+    emit vimModeChanged();
 }
 
 bool Backend::spellCheckAvailable() const {

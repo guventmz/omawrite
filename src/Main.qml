@@ -5,6 +5,7 @@ import QtQuick.Dialogs as Dialogs
 import QtQuick.Layouts
 import QtQuick.Window
 import "EditorMutations.js" as EditorMutations
+import "Vim.js" as Vim
 
 ApplicationWindow {
     id: win
@@ -57,6 +58,45 @@ ApplicationWindow {
     property var forwardStack: []
     property int backlinkCount: 0
     property var misspellings: []
+    property var vim: Vim.create()
+    property string vimState: "normal"
+    property bool vimSearching: false
+    readonly property bool vimBlockCursor: backend.vimMode && vimState === "normal"
+
+    // How Vim.js reaches the editor.
+    readonly property var vimEditor: ({
+        text: function() { return editor.text; },
+        cursor: function() { return editor.cursorPosition; },
+        setCursor: function(position) {
+            editor.cursorPosition = Math.max(0, Math.min(editor.text.length, position));
+        },
+        select: function(start, end) { editor.select(start, end); },
+        clearSelection: function() { editor.deselect(); },
+        replace: function(start, end, text) { EditorMutations.replaceRange(editor, start, end, text); },
+        undo: function() { editor.undo(); },
+        redo: function() { editor.redo(); },
+        pageLines: function() {
+            return Math.max(1, Math.floor(editorFlick.height / Math.max(1, editor.cursorRectangle.height)));
+        },
+        host: {
+            save: function() { backend.save(); },
+            quit: function(force) {
+                if (force)
+                    win.closeConfirmed = true;
+                win.close();
+            },
+            openSearch: function() {
+                win.vimSearching = true;
+                win.searchOpen = true;
+                win.replaceOpen = false;
+                searchField.forceActiveFocus();
+                searchField.selectAll();
+            },
+            openCommand: function() { vimCommandBar.open(); },
+            message: function(text) { backend.showStatus(text); },
+            modeChanged: function(mode) { win.vimState = mode; }
+        }
+    })
 
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
@@ -321,7 +361,60 @@ ApplicationWindow {
         showSearchMatch();
     }
 
+    // Keys as Vim.js names them. On macOS vim's Ctrl is the Control key and
+    // Cmd combinations stay with the app; on Linux only the few Ctrl keys
+    // vim needs are taken, so copy, paste and friends keep working.
+    function vimToken(event) {
+        var modifiers = event.modifiers;
+        if (macOS && (modifiers & Qt.ControlModifier))
+            return "";
+        var control = macOS ? (modifiers & Qt.MetaModifier) : (modifiers & Qt.ControlModifier);
+        if (control) {
+            if (event.key === Qt.Key_BracketLeft)
+                return "<Esc>";
+            if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z) {
+                var letter = String.fromCharCode(event.key).toLowerCase();
+                return macOS || "rdu".indexOf(letter) >= 0 ? "<C-" + letter + ">" : "";
+            }
+            return "";
+        }
+        switch (event.key) {
+        case Qt.Key_Escape: return "<Esc>";
+        case Qt.Key_Return: case Qt.Key_Enter: return "<CR>";
+        case Qt.Key_Backspace: return "<BS>";
+        case Qt.Key_Delete: return "<Del>";
+        case Qt.Key_Left: return "<Left>";
+        case Qt.Key_Right: return "<Right>";
+        case Qt.Key_Up: return "<Up>";
+        case Qt.Key_Down: return "<Down>";
+        case Qt.Key_Home: return "<Home>";
+        case Qt.Key_End: return "<End>";
+        case Qt.Key_Tab: return "<Tab>";
+        }
+        if (modifiers & Qt.AltModifier)
+            return "";
+        return event.text.length === 1 ? event.text : "";
+    }
+
+    // Returns true when vim took the key.
+    function handleVimKey(event) {
+        var token = vimToken(event);
+        if (token !== "" && Vim.feed(vim, vimEditor, token))
+            return true;
+        // Outside insert mode, stray keys must not type into the note.
+        return vimState !== "insert" && event.text.length > 0
+            && !(event.modifiers & Qt.ControlModifier);
+    }
+
+    function resetVim() {
+        var register = vim.register;
+        vim = Vim.create();
+        vim.register = register;
+        vimState = "normal";
+    }
+
     function closeSearch() {
+        vimSearching = false;
         searchOpen = false;
         searchUpdating = true;
         backend.setSearchHighlight("", -1);
@@ -503,6 +596,12 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+Alt+V"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.vimMode = !backend.vimMode
+    }
+
+    Shortcut {
         sequence: "Ctrl+,"
         context: Qt.ApplicationShortcut
         onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
@@ -582,6 +681,7 @@ ApplicationWindow {
         }
 
         function onFileUrlChanged() {
+            win.resetVim();
             win.refreshBacklinkCount();
             spellingRefresh.restart();
         }
@@ -1147,8 +1247,9 @@ FileTree {
                 // first frame). Fall back to Qt's scalable renderer there.
                 renderType: Screen.devicePixelRatio % 1 === 0 ? TextEdit.NativeRendering : TextEdit.QtRendering
                 cursorDelegate: Rectangle {
-                    width: 1
+                    width: win.vimBlockCursor ? Math.max(2, Math.round(writerFontMetrics.averageCharacterWidth)) : 1
                     color: win.strongTextColor
+                    opacity: win.vimBlockCursor ? 0.45 : 1
                 }
                 onCursorRectangleChanged: editorFlick.ensureCursorVisible()
                 onCursorPositionChanged: {
@@ -1333,6 +1434,10 @@ FileTree {
 
                 Keys.priority: Keys.BeforeItem
                 Keys.onPressed: function(event) {
+                    if (backend.vimMode && win.handleVimKey(event)) {
+                        event.accepted = true;
+                        return;
+                    }
                     var pasteKey = (event.key === Qt.Key_V)
                         && (event.modifiers & Qt.ControlModifier)
                         && !(event.modifiers & (Qt.AltModifier | Qt.MetaModifier | Qt.ShiftModifier));
@@ -1467,6 +1572,19 @@ FileTree {
             spacing: 12
             opacity: 0.55
 
+            Label {
+                objectName: "vimModeLabel"
+                visible: backend.vimMode
+                text: ({ normal: "NORMAL", insert: "INSERT", visual: "VISUAL",
+                         "visual-line": "V-LINE" })[win.vimState] || ""
+                color: win.vimState === "normal" ? win.mutedColor : backend.themeAccent
+                font.family: "IBM Plex Mono"
+                font.bold: true
+                font.pixelSize: win.scaledSize(11)
+                height: win.scaledSize(16)
+                verticalAlignment: Text.AlignVCenter
+            }
+
             FooterIconButton {
                 objectName: "saveButton"
                 iconName: "save"
@@ -1522,6 +1640,59 @@ FileTree {
             }
         }
 
+        Rectangle {
+            id: vimCommandBar
+            objectName: "vimCommandBar"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: win.footerHeight
+            visible: false
+            z: 20
+            color: win.surfaceColor
+
+            function open() {
+                vimCommandField.text = "";
+                visible = true;
+                vimCommandField.forceActiveFocus();
+            }
+
+            function close() {
+                visible = false;
+                editor.forceActiveFocus();
+            }
+
+            Label {
+                id: vimColon
+                anchors.left: parent.left
+                anchors.leftMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                text: ":"
+                color: win.textColor
+                font.family: "IBM Plex Mono"
+                font.pixelSize: win.scaledSize(13)
+            }
+
+            TextInput {
+                id: vimCommandField
+                anchors.left: vimColon.right
+                anchors.leftMargin: 2
+                anchors.right: parent.right
+                anchors.rightMargin: 12
+                anchors.verticalCenter: parent.verticalCenter
+                color: win.textColor
+                selectionColor: win.selectionFill
+                font.family: "IBM Plex Mono"
+                font.pixelSize: win.scaledSize(13)
+                Keys.onReturnPressed: {
+                    var command = text;
+                    vimCommandBar.close();
+                    Vim.runCommand(win.vim, win.vimEditor, command);
+                }
+                Keys.onEscapePressed: vimCommandBar.close()
+            }
+        }
+
         FontPicker {
             id: fontPicker
             objectName: "fontPicker"
@@ -1542,6 +1713,8 @@ FileTree {
             surfaceColor: win.surfaceColor
             wrapMode: backend.wrapMode
             onWrapRequested: backend.cycleWrapMode()
+            vimMode: backend.vimMode
+            onVimRequested: backend.vimMode = !backend.vimMode
             onFontChosen: function(family) { backend.editorFont = family; }
             onTextZoomRequested: function(steps) { backend.zoomText(steps); }
             onInterfaceZoomRequested: function(steps) { backend.zoomInterface(steps); }
@@ -1646,8 +1819,14 @@ FileTree {
                         clip: true
                         onTextChanged: win.updateSearch()
                         Keys.onReturnPressed: function(event) {
-                            win.moveSearch((event.modifiers & Qt.ShiftModifier) ? -1 : 1);
                             event.accepted = true;
+                            if (win.vimSearching) {
+                                var query = searchField.text;
+                                win.closeSearch();
+                                Vim.searchCommitted(win.vim, win.vimEditor, query);
+                                return;
+                            }
+                            win.moveSearch((event.modifiers & Qt.ShiftModifier) ? -1 : 1);
                         }
                         Keys.onEscapePressed: function(event) {
                             win.closeSearch();

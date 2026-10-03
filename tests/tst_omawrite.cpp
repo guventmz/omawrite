@@ -239,6 +239,20 @@ private slots:
         QCOMPARE(openDialogSpy.count(), 1);
     }
 
+    // The app loads its interface from resources; a file missing from
+    // resources.qrc would only show up there.
+    void loadsTheInterfaceFromResources() {
+        Backend backend;
+        Vault vault;
+        QQmlEngine engine;
+        engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+        engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
+        QQmlComponent component(&engine, QUrl(QStringLiteral("qrc:/Main.qml")));
+        QVERIFY2(component.isReady(), qPrintable(component.errorString()));
+        QScopedPointer<QObject> window(component.create());
+        QVERIFY2(window, qPrintable(component.errorString()));
+    }
+
     void scalesTextWithDesktopTextSize() {
         const QString mainQmlPath = QFINDTESTDATA("../src/Main.qml");
         QVERIFY(!mainQmlPath.isEmpty());
@@ -461,6 +475,133 @@ private slots:
         QVERIFY(page.contains(QStringLiteral("font-size: 22px")));
         QVERIFY(page.contains(QStringLiteral("@font-face")));
         QCOMPARE(page.count(QStringLiteral("</script>")), 5);
+    }
+
+    // Runs Vim.js over a plain string: keys are tokens; in insert mode a
+    // single-character token is typed, as the real editor would.
+    QVariantMap runVim(const QString &text, int cursor, const QStringList &keys) {
+        static QQmlEngine engine;
+        static QScopedPointer<QObject> driver;
+        if (!driver) {
+            QQmlComponent component(&engine);
+            component.setData(R"(
+import QtQuick
+import "Vim.js" as Vim
+QtObject {
+    function run(text, cursor, keys) {
+        var vim = Vim.create();
+        var doc = { text: text, cursor: cursor, undo: [], redo: [], selection: [-1, -1], message: "" };
+        var ed = {
+            text: function() { return doc.text; },
+            cursor: function() { return doc.cursor; },
+            setCursor: function(p) { doc.cursor = p; },
+            select: function(a, b) { doc.selection = [a, b]; },
+            clearSelection: function() { doc.selection = [-1, -1]; },
+            replace: function(a, b, s) {
+                doc.undo.push([doc.text, doc.cursor]); doc.redo = [];
+                doc.text = doc.text.slice(0, a) + s + doc.text.slice(b); doc.cursor = a + s.length;
+            },
+            undo: function() { if (doc.undo.length) { doc.redo.push([doc.text, doc.cursor]); var u = doc.undo.pop(); doc.text = u[0]; doc.cursor = u[1]; } },
+            redo: function() { if (doc.redo.length) { doc.undo.push([doc.text, doc.cursor]); var r = doc.redo.pop(); doc.text = r[0]; doc.cursor = r[1]; } },
+            pageLines: function() { return 10; },
+            host: { save: function() { doc.message = "saved"; }, quit: function(f) { doc.message = f ? "quit!" : "quit"; },
+                    openSearch: function() { doc.message = "search"; }, openCommand: function() { doc.message = "command"; },
+                    message: function(m) { doc.message = m; }, modeChanged: function() {} }
+        };
+        for (var i = 0; i < keys.length; ++i) {
+            if (!Vim.feed(vim, ed, keys[i]) && vim.mode === "insert") {
+                var key = keys[i] === "<CR>" ? "\n" : keys[i];
+                ed.replace(doc.cursor, doc.cursor, key);
+            }
+        }
+        return { text: doc.text, cursor: doc.cursor, mode: vim.mode, register: vim.register.text,
+                 selection: doc.selection, message: doc.message };
+    }
+})", QUrl::fromLocalFile(QFINDTESTDATA("../src/Vim.js")));
+            driver.reset(component.create());
+            if (!driver)
+                qWarning() << component.errorString();
+        }
+        QVariant result;
+        QMetaObject::invokeMethod(driver.data(), "run", Q_RETURN_ARG(QVariant, result),
+                                  Q_ARG(QVariant, text), Q_ARG(QVariant, cursor), Q_ARG(QVariant, keys));
+        return result.toMap();
+    }
+
+    void editsLikeVim_data() {
+        QTest::addColumn<QString>("text");
+        QTest::addColumn<int>("cursor");
+        QTest::addColumn<QStringList>("keys");
+        QTest::addColumn<QString>("expected");
+        QTest::addColumn<int>("expectedCursor");
+        QTest::addColumn<QString>("mode");
+
+        const QString line = QStringLiteral("one two three");
+        QTest::newRow("w moves by word") << line << 0 << QStringList{"w", "w"} << line << 8 << "normal";
+        QTest::newRow("e and b") << line << 0 << QStringList{"e", "e", "b"} << line << 4 << "normal";
+        QTest::newRow("$ and 0") << line << 4 << QStringList{"$"} << line << 12 << "normal";
+        QTest::newRow("dw") << line << 0 << QStringList{"d", "w"} << QStringLiteral("two three") << 0 << "normal";
+        QTest::newRow("d2w") << line << 0 << QStringList{"d", "2", "w"} << QStringLiteral("three") << 0 << "normal";
+        QTest::newRow("dw keeps the newline") << QStringLiteral("one two\nnext") << 4 << QStringList{"d", "w"}
+            << QStringLiteral("one \nnext") << 3 << "normal";
+        QTest::newRow("cw then type") << line << 4 << QStringList{"c", "w", "2", "<Esc>"}
+            << QStringLiteral("one 2 three") << 4 << "normal";
+        QTest::newRow("ciw") << line << 5 << QStringList{"c", "i", "w", "x", "<Esc>"}
+            << QStringLiteral("one x three") << 4 << "normal";
+        QTest::newRow("daw") << line << 5 << QStringList{"d", "a", "w"} << QStringLiteral("one three") << 4 << "normal";
+        QTest::newRow("ci\"") << QStringLiteral("say \"hello there\" now") << 7 << QStringList{"c", "i", "\"", "hi", "<Esc>"}
+            << QStringLiteral("say \"hi\" now") << 6 << "normal";
+        QTest::newRow("di(") << QStringLiteral("f(a, (b), c)") << 3 << QStringList{"d", "i", "("}
+            << QStringLiteral("f()") << 2 << "normal";
+        QTest::newRow("x and p") << QStringLiteral("abc") << 0 << QStringList{"x", "p"} << QStringLiteral("bac") << 1 << "normal";
+        QTest::newRow("dd") << QStringLiteral("a\nb\nc") << 2 << QStringList{"d", "d"} << QStringLiteral("a\nc") << 2 << "normal";
+        QTest::newRow("dd last line") << QStringLiteral("a\nb\nc") << 4 << QStringList{"d", "d"} << QStringLiteral("a\nb") << 2 << "normal";
+        QTest::newRow("yy p") << QStringLiteral("a\nb") << 0 << QStringList{"y", "y", "p"} << QStringLiteral("a\na\nb") << 2 << "normal";
+        QTest::newRow("dd P") << QStringLiteral("a\nb") << 2 << QStringList{"d", "d", "P"} << QStringLiteral("b\na") << 0 << "normal";
+        QTest::newRow("o opens below") << QStringLiteral("  a\nb") << 0 << QStringList{"o", "x", "<Esc>"}
+            << QStringLiteral("  a\n  x\nb") << 6 << "normal";
+        QTest::newRow("A appends") << QStringLiteral("ab\ncd") << 0 << QStringList{"A", "!", "<Esc>"}
+            << QStringLiteral("ab!\ncd") << 2 << "normal";
+        QTest::newRow("dot repeats") << QStringLiteral("a b c d") << 0 << QStringList{"d", "w", ".", "."}
+            << QStringLiteral("d") << 0 << "normal";
+        QTest::newRow("dot repeats insert") << QStringLiteral("x\ny") << 0 << QStringList{"A", ";", "<Esc>", "j", "."}
+            << QStringLiteral("x;\ny;") << 4 << "normal";
+        QTest::newRow("u and C-r") << line << 0 << QStringList{"d", "w", "u"} << line << 0 << "normal";
+        QTest::newRow("redo") << line << 0 << QStringList{"d", "w", "u", "<C-r>"} << QStringLiteral("two three") << 0 << "normal";
+        QTest::newRow("visual delete") << line << 4 << QStringList{"v", "e", "d"} << QStringLiteral("one  three") << 4 << "normal";
+        QTest::newRow("visual line yank put") << QStringLiteral("a\nb") << 0 << QStringList{"V", "y", "j", "p"}
+            << QStringLiteral("a\nb\na") << 4 << "normal";
+        QTest::newRow("f and ;") << QStringLiteral("a-b-c") << 0 << QStringList{"f", "-", ";"} << QStringLiteral("a-b-c") << 3 << "normal";
+        QTest::newRow("dt") << QStringLiteral("abc;def") << 0 << QStringList{"d", "t", ";"} << QStringLiteral(";def") << 0 << "normal";
+        QTest::newRow("J joins") << QStringLiteral("a\n   b") << 0 << QStringList{"J"} << QStringLiteral("a b") << 1 << "normal";
+        QTest::newRow(">> indents") << QStringLiteral("- item") << 0 << QStringList{">", ">"} << QStringLiteral("  - item") << 2 << "normal";
+        QTest::newRow("gg and G") << QStringLiteral("a\nb\nc") << 0 << QStringList{"G", "g", "g"} << QStringLiteral("a\nb\nc") << 0 << "normal";
+        QTest::newRow("2G") << QStringLiteral("a\nb\nc") << 0 << QStringList{"2", "G"} << QStringLiteral("a\nb\nc") << 2 << "normal";
+        QTest::newRow("r replaces") << QStringLiteral("cat") << 0 << QStringList{"r", "b"} << QStringLiteral("bat") << 0 << "normal";
+        QTest::newRow("~ toggles case") << QStringLiteral("abc") << 0 << QStringList{"~", "~"} << QStringLiteral("ABc") << 2 << "normal";
+        QTest::newRow("j keeps column") << QStringLiteral("abcd\nx\nabcd") << 3 << QStringList{"j", "j"}
+            << QStringLiteral("abcd\nx\nabcd") << 10 << "normal";
+        QTest::newRow("insert stays") << QStringLiteral("") << 0 << QStringList{"i", "h", "i"} << QStringLiteral("hi") << 2 << "insert";
+        QTest::newRow("Escape steps back") << QStringLiteral("ab") << 0 << QStringList{"A", "<Esc>"} << QStringLiteral("ab") << 1 << "normal";
+        QTest::newRow("n searches") << QStringLiteral("foo bar foo") << 0 << QStringList{"*"} << QStringLiteral("foo bar foo") << 8 << "normal";
+    }
+
+    void editsLikeVim() {
+        QFETCH(QString, text);
+        QFETCH(int, cursor);
+        QFETCH(QStringList, keys);
+        QFETCH(QString, expected);
+        QFETCH(int, expectedCursor);
+        QFETCH(QString, mode);
+        const QVariantMap result = runVim(text, cursor, keys);
+        QCOMPARE(result.value(QStringLiteral("text")).toString(), expected);
+        QCOMPARE(result.value(QStringLiteral("cursor")).toInt(), expectedCursor);
+        QCOMPARE(result.value(QStringLiteral("mode")).toString(), mode);
+    }
+
+    void runsVimCommands() {
+        QCOMPARE(runVim(QStringLiteral("a"), 0, {":"}).value(QStringLiteral("message")).toString(), QStringLiteral("command"));
+        QCOMPARE(runVim(QStringLiteral("a"), 0, {"/"}).value(QStringLiteral("message")).toString(), QStringLiteral("search"));
     }
 
     void remembersThemeAndWrap() {

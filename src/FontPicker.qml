@@ -18,11 +18,13 @@ Popup {
     property real interfaceZoom: 1
     property color surfaceColor: "#22221f"
     property string wrapMode: "column"
+    property bool vimMode: false
 
     signal fontChosen(string family)
     signal textZoomRequested(int steps)
     signal interfaceZoomRequested(int steps)
     signal wrapRequested()
+    signal vimRequested()
 
     readonly property var filteredFonts: {
         var query = filterField.text.trim().toLocaleLowerCase();
@@ -45,7 +47,7 @@ Popup {
 
     // Shrink to fit when a filter leaves only a few fonts.
     readonly property real headerHeight: scaledSize(34) + 13
-    readonly property real sizeControlsHeight: scaledSize(96) + 13
+    readonly property real sizeControlsHeight: scaledSize(128) + 13
     height: Math.min(maximumHeight, topPadding + bottomPadding + headerHeight
                      + Math.max(scaledSize(36), fontList.contentHeight) + sizeControlsHeight)
 
@@ -291,6 +293,41 @@ Popup {
 
             TapHandler {
                 onTapped: picker.wrapRequested()
+            }
+        }
+
+        Item {
+            objectName: "vimToggle"
+            width: parent.width
+            height: picker.scaledSize(32)
+
+            Label {
+                anchors.left: parent.left
+                anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Vim mode"
+                color: picker.textColor
+                font.family: picker.defaultFont
+                font.pixelSize: picker.scaledSize(13)
+            }
+
+            Label {
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: (picker.vimMode ? "On" : "Off") + "  ›"
+                color: vimHover.hovered ? picker.textColor : picker.mutedColor
+                font.family: picker.defaultFont
+                font.pixelSize: picker.scaledSize(12)
+            }
+
+            HoverHandler {
+                id: vimHover
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            TapHandler {
+                onTapped: picker.vimRequested()
             }
         }
 
