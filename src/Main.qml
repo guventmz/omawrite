@@ -82,6 +82,8 @@ ApplicationWindow {
         pageLines: function() {
             return Math.max(1, Math.floor(editorFlick.height / Math.max(1, editor.cursorRectangle.height)));
         },
+        scrollPage: function(fraction, from) { return win.scrollPage(fraction, from); },
+        scrollLines: function(lines) { return win.scrollLines(lines); },
         host: {
             save: function() { backend.save(); },
             quit: function(force) {
@@ -292,6 +294,41 @@ ApplicationWindow {
         forwardStack = forwardStack.filter(keep);
     }
 
+    // Pages the view by a fraction of its height (1 a page, 0.5 half) and
+    // carries the caret along so it keeps its place on screen, as editors and
+    // vim do. When the page cannot move any further, the caret still goes the
+    // whole way. Returns the caret's new position.
+    function scrollPage(fraction, from) {
+        var rect = editor.positionToRectangle(from);
+        var screenY = editor.y + rect.y - editorFlick.contentY;
+        var page = Math.max(editorFontPixelSize, editorFlick.height - editorFontPixelSize * 2);
+        var step = Math.round(page * Math.abs(fraction)) * (fraction < 0 ? -1 : 1);
+        var moved = editorFlick.clampContentY(editorFlick.contentY + step) - editorFlick.contentY;
+        var shift = Math.abs(moved) < Math.abs(step) - 1 ? step : moved;
+        var position = editor.positionAt(rect.x, Math.max(0, rect.y + rect.height / 2 + shift));
+        // Scroll to where the caret actually landed, so it holds its row exactly.
+        var landed = editor.positionToRectangle(position);
+        editorFlick.scrollTo(editorFlick.clampContentY(editor.y + landed.y - screenY));
+        return position;
+    }
+
+    // Scrolls by whole lines without moving the caret, unless it would leave
+    // the screen (vim's Ctrl+E / Ctrl+Y). Returns the caret's new position,
+    // or -1 when it can stay.
+    function scrollLines(lines) {
+        var lineHeight = Math.max(1, editor.cursorRectangle.height);
+        editorFlick.scrollTo(editorFlick.clampContentY(editorFlick.contentY + lines * lineHeight));
+        var margin = editorFontPixelSize * 2;
+        var top = editorFlick.contentY - editor.y + margin;
+        var bottom = editorFlick.contentY - editor.y + editorFlick.height - margin;
+        var rect = editor.cursorRectangle;
+        if (rect.y < top)
+            return editor.positionAt(rect.x, top + lineHeight / 2);
+        if (rect.y + rect.height > bottom)
+            return editor.positionAt(rect.x, bottom - lineHeight / 2);
+        return -1;
+    }
+
     function refreshBacklinkCount() {
         if (!vault.contains(backend.fileUrl)) {
             backlinkCount = 0;
@@ -378,7 +415,7 @@ ApplicationWindow {
                 return "<Esc>";
             if (event.key >= Qt.Key_A && event.key <= Qt.Key_Z) {
                 var letter = String.fromCharCode(event.key).toLowerCase();
-                return macOS || "rdu".indexOf(letter) >= 0 ? "<C-" + letter + ">" : "";
+                return macOS || "rdue".indexOf(letter) >= 0 ? "<C-" + letter + ">" : "";
             }
             return "";
         }
@@ -391,6 +428,8 @@ ApplicationWindow {
         case Qt.Key_Right: return "<Right>";
         case Qt.Key_Up: return "<Up>";
         case Qt.Key_Down: return "<Down>";
+        case Qt.Key_PageDown: return "<PageDown>";
+        case Qt.Key_PageUp: return "<PageUp>";
         case Qt.Key_Home: return "<Home>";
         case Qt.Key_End: return "<End>";
         case Qt.Key_Tab: return "<Tab>";
@@ -1414,11 +1453,7 @@ FileTree {
                 }
 
                 function movePage(direction, extendSelection) {
-                    var pageStep = Math.max(win.editorFontPixelSize,
-                                            editorFlick.height - win.editorFontPixelSize * 2);
-                    var rect = cursorRectangle;
-                    var targetY = rect.y + rect.height / 2 + direction * pageStep;
-                    var target = positionAt(rect.x, Math.max(0, targetY));
+                    var target = win.scrollPage(direction, cursorPosition);
                     if (extendSelection)
                         moveCursorSelection(target, TextEdit.SelectCharacters);
                     else

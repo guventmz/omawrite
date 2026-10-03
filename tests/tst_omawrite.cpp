@@ -583,6 +583,8 @@ QtObject {
             << QStringLiteral("abcd\nx\nabcd") << 10 << "normal";
         QTest::newRow("insert stays") << QStringLiteral("") << 0 << QStringList{"i", "h", "i"} << QStringLiteral("hi") << 2 << "insert";
         QTest::newRow("Escape steps back") << QStringLiteral("ab") << 0 << QStringList{"A", "<Esc>"} << QStringLiteral("ab") << 1 << "normal";
+        QTest::newRow("C-d without a view") << QStringLiteral("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl") << 0
+            << QStringList{"<C-d>"} << QStringLiteral("a\nb\nc\nd\ne\nf\ng\nh\ni\nj\nk\nl") << 10 << "normal";
         QTest::newRow("n searches") << QStringLiteral("foo bar foo") << 0 << QStringList{"*"} << QStringLiteral("foo bar foo") << 8 << "normal";
     }
 

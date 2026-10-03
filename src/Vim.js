@@ -4,7 +4,8 @@
 // and act through a small editor interface, so the logic runs the same on
 // the real TextEdit and on a plain string in the tests:
 //   text(), cursor(), setCursor(p), select(a, b), clearSelection(),
-//   replace(a, b, text), undo(), redo(), pageLines(), and host callbacks
+//   replace(a, b, text), undo(), redo(), pageLines(), optionally
+//   scrollPage(fraction, from) and scrollLines(n), and host callbacks
 //   save(), quit(force), openSearch(), openCommand(), message(text).
 
 var NORMAL = "normal";
@@ -291,10 +292,21 @@ function motion(vim, ed, token, count) {
     case "%":
         target = matchPair(t, p);
         return target < 0 ? { pos: p } : { pos: target, inclusive: true };
-    case "j": case "<Down>": case "<C-d>": case "<CR>": case "+":
-    case "k": case "<Up>": case "<C-u>": case "-":
-        var down = token === "j" || token === "<Down>" || token === "<C-d>" || token === "<CR>" || token === "+";
-        var lines = (token === "<C-d>" || token === "<C-u>") ? Math.max(1, Math.floor(ed.pageLines() / 2)) * count : count;
+    case "<C-d>": case "<C-u>": case "<C-f>": case "<C-b>": case "<PageDown>": case "<PageUp>":
+        // The editor pages by what is on screen, so wrapped paragraphs count
+        // as the lines they show; without it, fall back to text lines.
+        var fraction = { "<C-d>": 0.5, "<C-u>": -0.5, "<C-f>": 1, "<C-b>": -1,
+                         "<PageDown>": 1, "<PageUp>": -1 }[token];
+        if (ed.scrollPage)
+            return { pos: clampNormal(t, ed.scrollPage(fraction, p)), linewise: true };
+        var pageLines = Math.max(1, Math.round(ed.pageLines() * Math.abs(fraction)));
+        var fromLine = lineIndex(t, p);
+        var toLine = Math.max(0, Math.min(lineCount(t) - 1, fromLine + (fraction > 0 ? pageLines : -pageLines)));
+        return { pos: firstNonBlank(t, startOfLine(t, toLine)), linewise: true };
+    case "j": case "<Down>": case "<CR>": case "+":
+    case "k": case "<Up>": case "-":
+        var down = token === "j" || token === "<Down>" || token === "<CR>" || token === "+";
+        var lines = count;
         var current = lineIndex(t, p);
         var wanted = Math.max(0, Math.min(lineCount(t) - 1, current + (down ? lines : -lines)));
         var column = vim.column >= 0 ? vim.column : p - lineStart(t, p);
@@ -801,6 +813,13 @@ function normalCommand(vim, ed, token, count, t, p) {
         break;
     case "gJ":
         joinLines(ed, p, Math.max(2, count));
+        break;
+    case "<C-e>": case "<C-y>":
+        if (ed.scrollLines) {
+            var kept = ed.scrollLines(token === "<C-e>" ? count : -count);
+            if (kept >= 0)
+                ed.setCursor(clampNormal(ed.text(), kept));
+        }
         break;
     default:
         break;
