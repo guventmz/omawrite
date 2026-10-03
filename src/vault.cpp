@@ -5,12 +5,26 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QSaveFile>
 #include <QSettings>
 
 #include <algorithm>
 
 namespace {
 const QString vaultPathSetting = QStringLiteral("vault/path");
+const QString expandedSetting = QStringLiteral("vault/expanded");
+
+bool isNoteFile(const QString &name) {
+    return name.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)
+        || name.endsWith(QStringLiteral(".markdown"), Qt::CaseInsensitive);
+}
+
+QString cleanName(QString name) {
+    static const QRegularExpression unsafe(QStringLiteral("[/\\\\:\\x00-\\x1f\\x7f]"));
+    name.replace(unsafe, QStringLiteral("-"));
+    name = name.trimmed();
+    return name.startsWith(QLatin1Char('.')) ? QString() : name;
+}
 
 const QRegularExpression &wikiLinkRe() {
     static const QRegularExpression re(QStringLiteral("\\[\\[([^\\[\\]\\n]+?)\\]\\]"));
@@ -47,6 +61,7 @@ Vault::Vault(QObject *parent) : QObject(parent) {
     const QString saved = QSettings().value(vaultPathSetting).toString();
     if (!saved.isEmpty() && QDir(saved).exists())
         m_path = saved;
+    m_expanded = QSettings().value(expandedSetting).toStringList();
 }
 
 QString Vault::name() const {
@@ -63,6 +78,8 @@ void Vault::setPath(const QString &path) {
         return;
 
     m_path = cleaned;
+    m_expanded.clear();
+    QSettings().setValue(expandedSetting, m_expanded);
     m_notes.clear();
     m_textCache.clear();
     m_scanned = false;
@@ -368,4 +385,272 @@ QStringList Vault::wikiLinkTargets(const QString &text) {
             targets.append(target);
     }
     return targets;
+}
+
+QString Vault::absolute(const QString &relativePath) const {
+    return relativePath.isEmpty() ? m_path : QDir(m_path).filePath(relativePath);
+}
+
+QString Vault::relativePath(const QUrl &url) const {
+    if (!contains(url))
+        return {};
+    return QDir(m_path).relativeFilePath(QDir::cleanPath(url.toLocalFile()));
+}
+
+QUrl Vault::urlFor(const QString &relativePath) const {
+    return QUrl::fromLocalFile(absolute(relativePath));
+}
+
+void Vault::changed() {
+    m_textCache.clear();
+    refresh();
+    emit treeChanged();
+}
+
+QVariantList Vault::tree() {
+    QVariantList rows;
+    if (ready())
+        appendTree(QString(), 0, &rows);
+    return rows;
+}
+
+void Vault::appendTree(const QString &folder, int depth, QVariantList *rows) const {
+    const QFileInfoList entries = QDir(absolute(folder)).entryInfoList(
+        QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot,
+        QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
+    for (const QFileInfo &entry : entries) {
+        const bool isFolder = entry.isDir();
+        if (!isFolder && !isNoteFile(entry.fileName()))
+            continue;
+        const QString path = folder.isEmpty() ? entry.fileName()
+                                              : folder + QLatin1Char('/') + entry.fileName();
+        const bool expanded = isFolder && m_expanded.contains(path);
+        rows->append(QVariantMap{
+            {QStringLiteral("path"), path},
+            {QStringLiteral("name"), isFolder ? entry.fileName()
+                                              : withoutMarkdownSuffix(entry.fileName())},
+            {QStringLiteral("depth"), depth},
+            {QStringLiteral("folder"), isFolder},
+            {QStringLiteral("expanded"), expanded}});
+        if (expanded)
+            appendTree(path, depth + 1, rows);
+    }
+}
+
+void Vault::setExpanded(const QString &folder, bool expanded) {
+    if (expanded == m_expanded.contains(folder))
+        return;
+    if (expanded)
+        m_expanded.append(folder);
+    else
+        m_expanded.removeAll(folder);
+    QSettings().setValue(expandedSetting, m_expanded);
+    emit treeChanged();
+}
+
+// Opens every folder above a note, so the sidebar can show where it lives.
+void Vault::reveal(const QUrl &noteUrl) {
+    const QString path = relativePath(noteUrl);
+    bool changedAny = false;
+    for (int slash = int(path.indexOf(QLatin1Char('/'))); slash > 0;
+         slash = int(path.indexOf(QLatin1Char('/'), slash + 1))) {
+        const QString folder = path.left(slash);
+        if (!m_expanded.contains(folder)) {
+            m_expanded.append(folder);
+            changedAny = true;
+        }
+    }
+    if (changedAny) {
+        QSettings().setValue(expandedSetting, m_expanded);
+        emit treeChanged();
+    }
+}
+
+QVariantList Vault::findFolders(const QString &query, int limit) {
+    QVariantList results;
+    if (!ready())
+        return results;
+    QList<QPair<int, QString>> ranked{{0, QString()}};
+    const QDir root(m_path);
+    QDirIterator it(m_path, QDir::Dirs | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QString relative = root.relativeFilePath(it.next());
+        if (relative.startsWith(QLatin1Char('.')) || relative.contains(QStringLiteral("/.")))
+            continue;
+        ranked.append({0, relative});
+    }
+    const QString trimmed = query.trimmed();
+    QList<QPair<int, QString>> matches;
+    for (const auto &folder : std::as_const(ranked)) {
+        const QString shown = folder.second.isEmpty() ? name() : folder.second;
+        const int score = trimmed.isEmpty() ? 0 : fuzzyScore(trimmed, shown);
+        if (score >= 0)
+            matches.append({score, folder.second});
+    }
+    std::stable_sort(matches.begin(), matches.end(), [](const auto &a, const auto &b) {
+        return a.first > b.first;
+    });
+    for (const auto &match : std::as_const(matches)) {
+        if (results.size() >= limit)
+            break;
+        results.append(QVariantMap{{QStringLiteral("path"), match.second},
+                                   {QStringLiteral("title"), match.second.isEmpty()
+                                        ? QStringLiteral("/ (vault root)") : match.second},
+                                   {QStringLiteral("folder"), QString()}});
+    }
+    return results;
+}
+
+QString Vault::uniqueName(const QString &folder, const QString &base, const QString &suffix) const {
+    const QDir directory(absolute(folder));
+    QString candidate = base + suffix;
+    for (int n = 2; directory.exists(candidate); ++n)
+        candidate = QStringLiteral("%1 %2%3").arg(base).arg(n).arg(suffix);
+    return candidate;
+}
+
+QString Vault::createNoteIn(const QString &folder) {
+    if (!ready())
+        return {};
+    const QString fileName = uniqueName(folder, QStringLiteral("Untitled"), QStringLiteral(".md"));
+    QFile file(QDir(absolute(folder)).filePath(fileName));
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly | QIODevice::Text))
+        return {};
+    file.close();
+    if (!folder.isEmpty())
+        setExpanded(folder, true);
+    changed();
+    return folder.isEmpty() ? fileName : folder + QLatin1Char('/') + fileName;
+}
+
+QString Vault::createFolder(const QString &parent) {
+    if (!ready())
+        return {};
+    const QString folderName = uniqueName(parent, QStringLiteral("New Folder"), QString());
+    if (!QDir(absolute(parent)).mkdir(folderName))
+        return {};
+    if (!parent.isEmpty())
+        setExpanded(parent, true);
+    changed();
+    return parent.isEmpty() ? folderName : parent + QLatin1Char('/') + folderName;
+}
+
+// [[Old]], [[Old|alias]] and [[Old#Heading]] become [[New...]]; the alias and
+// heading are kept, and links to anything else are left untouched.
+QString Vault::renameLinks(const QString &text, const QStringList &oldTargets,
+                           const QString &newTarget) {
+    QStringList escaped;
+    for (const QString &target : oldTargets)
+        escaped.append(QRegularExpression::escape(target));
+    const QRegularExpression linkRe(
+        QStringLiteral("\\[\\[\\s*(?:%1)\\s*((?:#[^\\]|\\n]*)?(?:\\|[^\\]\\n]*)?)\\]\\]")
+            .arg(escaped.join(QLatin1Char('|'))),
+        QRegularExpression::CaseInsensitiveOption);
+    QString result = text;
+    result.replace(linkRe, QStringLiteral("[[%1\\1]]").arg(newTarget));
+    return result;
+}
+
+QVariantMap Vault::rename(const QString &path, const QString &newName) {
+    const QFileInfo info(absolute(path));
+    const QString name = cleanName(withoutMarkdownSuffix(newName));
+    if (!ready() || path.isEmpty() || !info.exists() || name.isEmpty())
+        return {{QStringLiteral("error"), QStringLiteral("That name can't be used.")}};
+
+    const bool isFolder = info.isDir();
+    const QString fileName = isFolder ? name : name + QStringLiteral(".md");
+    const QString parent = path.contains(QLatin1Char('/')) ? path.section(QLatin1Char('/'), 0, -2)
+                                                          : QString();
+    const QString newPath = parent.isEmpty() ? fileName : parent + QLatin1Char('/') + fileName;
+    const QString target = absolute(newPath);
+    if (target == info.absoluteFilePath())
+        return {{QStringLiteral("path"), path}, {QStringLiteral("updatedNotes"), 0}};
+
+    // A case-only rename on a case-insensitive disk goes through a temporary name.
+    const bool sameFile = QFileInfo::exists(target)
+        && QFileInfo(target).canonicalFilePath() == info.canonicalFilePath();
+    if (QFileInfo::exists(target) && !sameFile)
+        return {{QStringLiteral("error"), QStringLiteral("%1 already exists.").arg(fileName)}};
+    QDir directory(info.absolutePath());
+    if (sameFile) {
+        const QString temporary = uniqueName(parent, QStringLiteral(".omawrite-rename"), QString());
+        if (!directory.rename(info.fileName(), temporary) || !directory.rename(temporary, fileName))
+            return {{QStringLiteral("error"), QStringLiteral("Could not rename.")}};
+    } else if (!directory.rename(info.fileName(), fileName)) {
+        return {{QStringLiteral("error"), QStringLiteral("Could not rename.")}};
+    }
+
+    // A note just created in the tree is empty; naming it gives it its heading.
+    if (!isFolder && info.size() == 0) {
+        QFile file(target);
+        if (file.open(QIODevice::WriteOnly | QIODevice::Text))
+            file.write(QStringLiteral("# %1\n\n").arg(name).toUtf8());
+    }
+
+    if (isFolder) {
+        for (QString &expanded : m_expanded) {
+            if (expanded == path || expanded.startsWith(path + QLatin1Char('/')))
+                expanded = newPath + expanded.mid(path.length());
+        }
+        QSettings().setValue(expandedSetting, m_expanded);
+    }
+
+    // Notes are linked by title, so a renamed note takes its links along.
+    int updated = 0;
+    if (!isFolder) {
+        refresh();
+        const QString oldTitle = withoutMarkdownSuffix(info.fileName());
+        const QStringList oldTargets{oldTitle, withoutMarkdownSuffix(path)};
+        for (const Note &note : std::as_const(m_notes)) {
+            QFile file(note.path);
+            if (!file.open(QIODevice::ReadOnly | QIODevice::Text))
+                continue;
+            const QString text = QString::fromUtf8(file.readAll());
+            file.close();
+            if (!text.contains(QStringLiteral("[[")))
+                continue;
+            const QString renamed = renameLinks(text, oldTargets, name);
+            if (renamed == text)
+                continue;
+            QSaveFile save(note.path);
+            if (save.open(QIODevice::WriteOnly | QIODevice::Text)) {
+                save.write(renamed.toUtf8());
+                if (save.commit())
+                    ++updated;
+            }
+        }
+    }
+
+    changed();
+    return {{QStringLiteral("path"), newPath}, {QStringLiteral("updatedNotes"), updated}};
+}
+
+QVariantMap Vault::move(const QString &path, const QString &folder) {
+    const QFileInfo info(absolute(path));
+    if (!ready() || path.isEmpty() || !info.exists())
+        return {{QStringLiteral("error"), QStringLiteral("Nothing to move.")}};
+    if (info.isDir() && (folder == path || folder.startsWith(path + QLatin1Char('/'))))
+        return {{QStringLiteral("error"), QStringLiteral("A folder can't move into itself.")}};
+
+    const QString newPath = folder.isEmpty() ? info.fileName()
+                                             : folder + QLatin1Char('/') + info.fileName();
+    if (newPath == path)
+        return {{QStringLiteral("path"), path}};
+    if (QFileInfo::exists(absolute(newPath)))
+        return {{QStringLiteral("error"), QStringLiteral("%1 already exists there.").arg(info.fileName())}};
+    if (!QDir().rename(info.absoluteFilePath(), absolute(newPath)))
+        return {{QStringLiteral("error"), QStringLiteral("Could not move.")}};
+
+    if (!folder.isEmpty())
+        setExpanded(folder, true);
+    changed();
+    return {{QStringLiteral("path"), newPath}};
+}
+
+bool Vault::trash(const QString &path) {
+    if (!ready() || path.isEmpty() || !QFile::moveToTrash(absolute(path)))
+        return false;
+    m_expanded.removeAll(path);
+    changed();
+    return true;
 }

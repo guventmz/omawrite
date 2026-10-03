@@ -108,6 +108,13 @@ public:
     Q_INVOKABLE void keepExternalVersion();
     Q_INVOKABLE void printDocument();
     Q_INVOKABLE void previewInBrowser();
+    Q_INVOKABLE void fileMoved(const QUrl &from, const QUrl &to);
+    Q_INVOKABLE void closeDocument();
+    Q_INVOKABLE void showStatus(const QString &status) { setStatus(status); }
+    // URLs reach QML both percent-encoded and not, so files are compared by path.
+    Q_INVOKABLE static bool sameFile(const QUrl &a, const QUrl &b);
+    Q_INVOKABLE static bool isAtOrUnder(const QUrl &url, const QUrl &folder);
+    Q_INVOKABLE static QUrl remapped(const QUrl &url, const QUrl &from, const QUrl &to);
     Q_INVOKABLE void newWindow();
     Q_INVOKABLE QString clipboardUrl() const;
     Q_INVOKABLE QString clipboardText() const;

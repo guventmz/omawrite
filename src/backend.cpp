@@ -601,6 +601,45 @@ void Backend::previewInBrowser() {
     setStatus(QStringLiteral("Opened preview in browser"));
 }
 
+bool Backend::sameFile(const QUrl &a, const QUrl &b) {
+    return a.isLocalFile() && b.isLocalFile()
+        && QDir::cleanPath(a.toLocalFile()) == QDir::cleanPath(b.toLocalFile());
+}
+
+bool Backend::isAtOrUnder(const QUrl &url, const QUrl &folder) {
+    if (!url.isLocalFile() || !folder.isLocalFile())
+        return false;
+    const QString path = QDir::cleanPath(url.toLocalFile());
+    const QString root = QDir::cleanPath(folder.toLocalFile());
+    return path == root || path.startsWith(root + QLatin1Char('/'));
+}
+
+QUrl Backend::remapped(const QUrl &url, const QUrl &from, const QUrl &to) {
+    if (!isAtOrUnder(url, from))
+        return url;
+    return QUrl::fromLocalFile(QDir::cleanPath(to.toLocalFile())
+                               + QDir::cleanPath(url.toLocalFile()).mid(QDir::cleanPath(from.toLocalFile()).length()));
+}
+
+// The sidebar renamed or moved the open note, or a folder holding it.
+void Backend::fileMoved(const QUrl &from, const QUrl &to) {
+    if (!isAtOrUnder(m_fileUrl, from))
+        return;
+    setFileUrl(remapped(m_fileUrl, from, to));
+    scheduleRecovery();
+}
+
+// After the open note goes to the Trash, start over on an empty page.
+void Backend::closeDocument() {
+    loadDocumentText(QString());
+    clearRecovery();
+    m_lastKnownFileContents.clear();
+    m_hasKnownFileContents = false;
+    setFileUrl(QUrl());
+    setModified(false);
+    setStatus(QString());
+}
+
 void Backend::newWindow() {
     const bool started = QProcess::startDetached(QCoreApplication::applicationFilePath(),
                                                  QStringList());

@@ -13,6 +13,8 @@ Popup {
     property string mode: "open"
     property url currentNoteUrl
     property string currentNoteTitle
+    property string movingPath
+    property string movingName
     property string fontFamily: "IBM Plex Mono"
     property bool darkMode: true
     property real textScale: 1
@@ -29,6 +31,7 @@ Popup {
     signal createRequested(string title)
     signal linkChosen(string title)
     signal chooseVaultRequested()
+    signal folderChosen(string movingPath, string folder)
 
     function scaledSize(pixels) {
         return Math.max(1, Math.round(pixels * textScale));
@@ -43,12 +46,15 @@ Popup {
         : mode === "text" ? "Search all notes"
         : mode === "backlinks" ? "Notes linking to " + currentNoteTitle
         : mode === "link" ? "Link to note"
+        : mode === "move" ? "Move “" + movingName + "” to folder"
         : "Open or create a note"
 
     function refreshResults() {
         var query = filterField.text.trim();
         if (!vault.ready) {
             results = [{ action: "vault", title: "Choose a vault folder…", folder: "" }];
+        } else if (mode === "move") {
+            results = vault.findFolders(query, 50);
         } else if (mode === "text") {
             results = query.length < 2 ? [] : vault.searchText(query, 200);
         } else if (mode === "backlinks") {
@@ -60,7 +66,7 @@ Popup {
             var notes = vault.findNotes(query, 50);
             if (mode === "link") {
                 notes = notes.filter(function(note) {
-                    return note.url.toString() !== currentNoteUrl.toString();
+                    return !backend.sameFile(note.url, currentNoteUrl);
                 });
             }
             var exact = notes.some(function(note) {
@@ -82,6 +88,8 @@ Popup {
             chooseVaultRequested();
         else if (mode === "link")
             linkChosen(entry.title);
+        else if (mode === "move")
+            folderChosen(movingPath, entry.path);
         else if (entry.action === "create")
             createRequested(entry.title);
         else

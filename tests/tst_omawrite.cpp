@@ -486,6 +486,65 @@ private slots:
         reopened.setWrapMode(QStringLiteral("column"));
     }
 
+    void managesTheVaultTree() {
+        QCOMPARE(Vault::renameLinks(QStringLiteral("See [[Deep Work]], [[deep work|it]], [[Deep Work#Ch 2]], [[Deep Worker]]."),
+                                    {QStringLiteral("Deep Work")}, QStringLiteral("Focus")),
+                 QStringLiteral("See [[Focus]], [[Focus|it]], [[Focus#Ch 2]], [[Deep Worker]]."));
+
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        QDir(folder.path()).mkpath(QStringLiteral("books"));
+        QDir(folder.path()).mkpath(QStringLiteral(".obsidian"));
+        const auto write = [&folder](const QString &name, const QString &text) {
+            QFile file(folder.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(text.toUtf8());
+        };
+        write(QStringLiteral("books/Deep Work.md"), QStringLiteral("# Deep Work\n"));
+        write(QStringLiteral("Index.md"), QStringLiteral("Read [[Deep Work|this]] and [[books/Deep Work]].\n"));
+        write(QStringLiteral("cover.png"), QStringLiteral("not a note"));
+
+        Vault vault;
+        vault.setPath(folder.path());
+        const auto names = [&vault] {
+            QStringList rows;
+            for (const QVariant &row : vault.tree()) {
+                const QVariantMap entry = row.toMap();
+                rows.append(QString(entry.value(QStringLiteral("depth")).toInt() * 2, QLatin1Char(' '))
+                            + entry.value(QStringLiteral("name")).toString());
+            }
+            return rows;
+        };
+        QCOMPARE(names(), QStringList({QStringLiteral("books"), QStringLiteral("Index")}));
+        vault.setExpanded(QStringLiteral("books"), true);
+        QCOMPARE(names(), QStringList({QStringLiteral("books"), QStringLiteral("  Deep Work"),
+                                       QStringLiteral("Index")}));
+
+        const QVariantMap renamed = vault.rename(QStringLiteral("books/Deep Work.md"), QStringLiteral("Focus"));
+        QCOMPARE(renamed.value(QStringLiteral("path")).toString(), QStringLiteral("books/Focus.md"));
+        QCOMPARE(renamed.value(QStringLiteral("updatedNotes")).toInt(), 1);
+        QFile index(folder.filePath(QStringLiteral("Index.md")));
+        QVERIFY(index.open(QIODevice::ReadOnly));
+        QCOMPARE(index.readAll(), QByteArray("Read [[Focus|this]] and [[Focus]].\n"));
+        QVERIFY(vault.rename(QStringLiteral("Index.md"), QStringLiteral("books/../x")).contains(QStringLiteral("path")));
+        QVERIFY(vault.rename(QStringLiteral("books"), QStringLiteral("  ")).contains(QStringLiteral("error")));
+
+        const QString note = vault.createNoteIn(QStringLiteral("books"));
+        QCOMPARE(note, QStringLiteral("books/Untitled.md"));
+        QCOMPARE(vault.createNoteIn(QStringLiteral("books")), QStringLiteral("books/Untitled 2.md"));
+        const QString created = vault.createFolder(QString());
+        QCOMPARE(created, QStringLiteral("New Folder"));
+
+        QCOMPARE(vault.move(QStringLiteral("books/Untitled.md"), created).value(QStringLiteral("path")).toString(),
+                 QStringLiteral("New Folder/Untitled.md"));
+        QVERIFY(vault.move(QStringLiteral("books"), QStringLiteral("books")).contains(QStringLiteral("error")));
+        QVERIFY(vault.move(QStringLiteral("books/Untitled 2.md"), created).contains(QStringLiteral("path")));
+        QVERIFY(vault.move(QStringLiteral("New Folder/Untitled 2.md"), QStringLiteral("books"))
+                    .contains(QStringLiteral("path")));
+        QVERIFY(vault.findFolders(QStringLiteral("nf")).constFirst().toMap()
+                    .value(QStringLiteral("path")).toString() == created);
+    }
+
     void navigatesAVault() {
         QTemporaryDir folder;
         QVERIFY(folder.isValid());

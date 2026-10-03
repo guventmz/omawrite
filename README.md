@@ -25,6 +25,14 @@ stay plain `.md` files; nothing else is written to the folder.
 - `Ctrl+[` and `Ctrl+]` go back and forward through the notes you visited.
 - `Ctrl+Shift+B` lists the notes that link to the current one. The footer shows the count.
 
+`Ctrl+Shift+E` opens the file tree on the current note (press it again to jump in, and
+once more to close). In the tree: arrows move and fold, `Enter` opens, `N` creates a note,
+`Shift+N` a folder, `R` renames, `M` moves (pick the folder by fuzzy search),
+`Cmd+Backspace` / `Delete` moves to the Trash, `Escape` returns to the editor. Notes and
+folders can also be dragged onto folders. Renaming a note rewrites the `[[links]]` to it.
+
+`Ctrl+,` shows every shortcut, grouped, with a filter.
+
 Moving to another note saves the one you leave, so following links never stops to ask.
 Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 

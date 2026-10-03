@@ -9,6 +9,8 @@
         <file alias="FontPicker.qml">FontPicker.qml</file>
         <file alias="NotePicker.qml">NotePicker.qml</file>
         <file alias="ThemePicker.qml">ThemePicker.qml</file>
+        <file alias="FileTree.qml">FileTree.qml</file>
+        <file alias="ShortcutSheet.qml">ShortcutSheet.qml</file>
         <file alias="EditorMutations.js">EditorMutations.js</file>
         <file alias="fonts/IBMPlexMono-Regular.ttf">../fonts/IBMPlexMono-Regular.ttf</file>
         <file alias="fonts/IBMPlexMono-Italic.ttf">../fonts/IBMPlexMono-Italic.ttf</file>

@@ -36,12 +36,31 @@ public:
     Q_INVOKABLE QUrl createNote(const QString &title);
     Q_INVOKABLE QString linkAt(const QString &text, int position) const;
 
+    // The folder tree, flattened to the rows a sidebar shows: folders first,
+    // then notes, descending only into the expanded folders. Paths are
+    // relative to the vault, notes with their .md extension.
+    Q_INVOKABLE QVariantList tree();
+    Q_INVOKABLE void setExpanded(const QString &folder, bool expanded);
+    Q_INVOKABLE void reveal(const QUrl &noteUrl);
+    Q_INVOKABLE QVariantList findFolders(const QString &query, int limit = 50);
+    Q_INVOKABLE QString relativePath(const QUrl &url) const;
+    Q_INVOKABLE QUrl urlFor(const QString &relativePath) const;
+
+    Q_INVOKABLE QString createNoteIn(const QString &folder);
+    Q_INVOKABLE QString createFolder(const QString &parent);
+    Q_INVOKABLE QVariantMap rename(const QString &path, const QString &newName);
+    Q_INVOKABLE QVariantMap move(const QString &path, const QString &folder);
+    Q_INVOKABLE bool trash(const QString &path);
+
     static int fuzzyScore(const QString &query, const QString &candidate);
     static QString linkTarget(const QString &linkBody);
     static QStringList wikiLinkTargets(const QString &text);
+    static QString renameLinks(const QString &text, const QStringList &oldTargets,
+                               const QString &newTarget);
 
 signals:
     void pathChanged();
+    void treeChanged();
 
 private:
     struct Note {
@@ -59,6 +78,12 @@ private:
     void ensureScanned();
     QString noteText(const Note &note);
     QVariantMap noteEntry(const Note &note) const;
+    void appendTree(const QString &folder, int depth, QVariantList *rows) const;
+    QString absolute(const QString &relativePath) const;
+    QString uniqueName(const QString &folder, const QString &base, const QString &suffix) const;
+    void changed();
+
+    QStringList m_expanded;
 
     QString m_path;
     QList<Note> m_notes;

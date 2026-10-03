@@ -57,6 +57,8 @@ ApplicationWindow {
     property var forwardStack: []
     property int backlinkCount: 0
     property var misspellings: []
+    property bool sidebarOpen: false
+    readonly property int sidebarWidth: sidebarOpen ? scaledSize(260) : 0
 
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
@@ -98,12 +100,12 @@ ApplicationWindow {
     function navigateTo(url, line) {
         if (url.toString() === "")
             return;
-        if (url.toString() !== backend.fileUrl.toString()) {
+        if (!backend.sameFile(url, backend.fileUrl)) {
             if (!saveBeforeLeaving(url))
                 return;
             var from = backend.fileUrl;
             backend.open(url);
-            if (backend.fileUrl.toString() !== url.toString())
+            if (!backend.sameFile(backend.fileUrl, url))
                 return;
             if (from.toString() !== "") {
                 backStack = backStack.concat([from]);
@@ -116,7 +118,7 @@ ApplicationWindow {
     // A fresh note opens with the caret under its heading, ready to write.
     function openNewNote(url) {
         navigateTo(url);
-        if (url.toString() !== "" && backend.fileUrl.toString() === url.toString())
+        if (backend.sameFile(backend.fileUrl, url))
             editor.cursorPosition = editor.text.length;
     }
 
@@ -129,7 +131,7 @@ ApplicationWindow {
             return;
         backStack = backStack.slice(0, -1);
         backend.open(target);
-        if (backend.fileUrl.toString() === target.toString() && from.toString() !== "")
+        if (backend.sameFile(backend.fileUrl, target) && from.toString() !== "")
             forwardStack = forwardStack.concat([from]);
     }
 
@@ -142,7 +144,7 @@ ApplicationWindow {
             return;
         forwardStack = forwardStack.slice(0, -1);
         backend.open(target);
-        if (backend.fileUrl.toString() === target.toString() && from.toString() !== "")
+        if (backend.sameFile(backend.fileUrl, target) && from.toString() !== "")
             backStack = backStack.concat([from]);
     }
 
@@ -225,6 +227,35 @@ ApplicationWindow {
         var top = Math.max(0, editorFlick.contentY - editor.y);
         misspellings = backend.misspellingsBetween(editor.positionAt(0, top),
                                                    editor.positionAt(editor.width, top + editorFlick.height));
+    }
+
+    // Shift+Cmd+E opens the tree on the current note, jumps into it when it is
+    // already open, and closes it when it already has focus.
+    function toggleFileTree() {
+        if (sidebarOpen && fileTree.activeFocus) {
+            sidebarOpen = false;
+            editor.forceActiveFocus();
+            return;
+        }
+        var opening = !sidebarOpen;
+        sidebarOpen = true;
+        if (opening)
+            fileTree.revealCurrentNote();
+        fileTree.focusList();
+    }
+
+    function entryMoved(from, to) {
+        backend.fileMoved(from, to);
+        backStack = backStack.map(function(url) { return backend.remapped(url, from, to); });
+        forwardStack = forwardStack.map(function(url) { return backend.remapped(url, from, to); });
+    }
+
+    function entryTrashed(entryUrl) {
+        if (backend.isAtOrUnder(backend.fileUrl, entryUrl))
+            backend.closeDocument();
+        var keep = function(url) { return !backend.isAtOrUnder(url, entryUrl); };
+        backStack = backStack.filter(keep);
+        forwardStack = forwardStack.filter(keep);
     }
 
     function refreshBacklinkCount() {
@@ -349,7 +380,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+?"
         context: Qt.ApplicationShortcut
-        onActivated: shortcutsDialog.open()
+        onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
     }
 
     Shortcut {
@@ -478,6 +509,18 @@ ApplicationWindow {
         sequence: "Ctrl+Alt+L"
         context: Qt.ApplicationShortcut
         onActivated: backend.cycleWrapMode()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+,"
+        context: Qt.ApplicationShortcut
+        onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+E"
+        context: Qt.ApplicationShortcut
+        onActivated: win.toggleFileTree()
     }
 
     Shortcut {
@@ -747,6 +790,23 @@ ApplicationWindow {
         onCreateRequested: function(title) { win.openNewNote(vault.createNote(title)); }
         onLinkChosen: function(title) { win.insertLinkToNote(title); }
         onChooseVaultRequested: vaultFolderDialog.open()
+        onFolderChosen: function(movingPath, folder) { fileTree.moveTo(movingPath, folder); }
+        onClosed: mode === "move" ? fileTree.focusList() : editor.forceActiveFocus()
+    }
+
+    ShortcutSheet {
+        id: shortcutSheet
+        objectName: "shortcutSheet"
+        anchors.centerIn: Overlay.overlay
+        width: Math.min(win.scaledSize(860), win.width - 48)
+        maximumHeight: win.height - 48
+        macOS: win.macOS
+        textScale: win.textScale
+        textColor: win.textColor
+        mutedColor: win.mutedColor
+        headingColor: backend.themeForeground
+        highlightColor: backend.themeAccent
+        surfaceColor: win.surfaceColor
         onClosed: editor.forceActiveFocus()
     }
 
@@ -786,27 +846,51 @@ ApplicationWindow {
         onReloadRequested: backend.reloadFromDisk()
     }
 
-    Dialog {
-        id: shortcutsDialog
-        modal: true
-        title: "Keyboard shortcuts"
-        standardButtons: Dialog.Close
-        anchors.centerIn: parent
-        contentItem: Label {
-            text: win.macOS
-                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⇧⌘V  Preview in Browser\n⌃⌘D  Look Up\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
-                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+Shift+V  Preview in Browser\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Alt+T  Theme\nCtrl+Alt+L  Wrap: Column / Window / Off\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
-            lineHeight: 1.5
-        }
-    }
 
     Item {
         anchors.fill: parent
 
+        FileTree {
+            id: fileTree
+            objectName: "fileTree"
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: win.footerHeight
+            width: win.sidebarWidth
+            visible: win.sidebarOpen
+            currentNoteUrl: backend.fileUrl
+            macOS: win.macOS
+            textScale: win.textScale
+            textColor: win.textColor
+            mutedColor: win.mutedColor
+            highlightColor: backend.themeAccent
+            surfaceColor: win.surfaceColor
+            onNoteChosen: function(noteUrl) { win.navigateTo(noteUrl); }
+            onNewNoteReady: function(noteUrl) { win.openNewNote(noteUrl); }
+            onMoveRequested: function(path, name) {
+                notePicker.movingPath = path;
+                notePicker.movingName = name;
+                notePicker.show("move");
+            }
+            onEntryMoved: function(from, to) { win.entryMoved(from, to); }
+            onEntryTrashed: function(entryUrl) { win.entryTrashed(entryUrl); }
+            onBeforeChange: {
+                if (backend.modified && backend.fileUrl.toString() !== "")
+                    backend.save();
+            }
+            onLinksRewritten: {
+                if (!backend.modified && vault.contains(backend.fileUrl))
+                    backend.reloadFromDisk();
+            }
+            onMessage: function(text) { backend.showStatus(text); }
+            onDone: editor.forceActiveFocus()
+        }
+
         Flickable {
             id: editorFlick
             anchors.fill: parent
-            anchors.leftMargin: 24
+            anchors.leftMargin: 24 + win.sidebarWidth
             anchors.rightMargin: 24
             // Inset the scrolling area by the footer strip at both ends, so
             // scrolled text never runs under the footer buttons, status, or
@@ -1504,7 +1588,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.topMargin: 12
-            anchors.leftMargin: 12
+            anchors.leftMargin: 12 + win.sidebarWidth
             anchors.rightMargin: 12
             height: win.scaledSize(win.replaceOpen ? 104 : 56)
             visible: win.searchOpen
