@@ -38,8 +38,10 @@ Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
   scroll sideways). Also in the font popup.
 - Fenced code blocks get light syntax colors in a monospace font, and `$inline$` and
   `$$display$$` math are colored and kept verbatim, so Markdown never mangles them.
-- With the cursor in a formula, its rendered form floats just below the source and
-  updates as you type.
+- `Ctrl+Shift+V` (or the eye button) opens the note rendered in your browser, in the same
+  theme, font and column: formatted Markdown, typeset math (KaTeX) and highlighted code.
+  The page loads marked, KaTeX and highlight.js from cdnjs, so it needs a connection;
+  offline it shows the plain text.
 
 ## Spelling (macOS)
 
@@ -106,10 +108,6 @@ On macOS, shortcuts use `⌘` wherever Linux uses `Ctrl`, with a few exceptions:
 Dark and light mode follow the system appearance. Markdown files open from Finder
 and "Open With"; a file opened while the window holds a document gets a new window.
 Text size stays at the default, since macOS has no desktop text scale setting.
-
-Math is rendered with [MicroTeX](https://github.com/NanoMichael/MicroTeX) (MIT), vendored
-under `3rdparty/microtex` with small Qt 6 patches (`microtex-qt6.patch`); its fonts carry the
-licences in `3rdparty/microtex/res/fonts/licences`.
 
 The IBM Plex Mono font is bundled under the SIL Open Font License 1.1; see
 `fonts/OFL.txt`. The font is copyright IBM Corp.

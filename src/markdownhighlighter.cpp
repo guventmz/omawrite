@@ -447,57 +447,6 @@ QList<MarkdownHighlighter::VerbatimSpan> MarkdownHighlighter::verbatimSpans(cons
     return spans;
 }
 
-MarkdownHighlighter::MathSource MarkdownHighlighter::mathAt(const QString &text, int position) {
-    const QStringList lines = text.split(QLatin1Char('\n'));
-    // Walk the lines once, tracking fences and $$ blocks the same way the
-    // highlighter does, until reaching the caret's line.
-    int lineStart = 0;
-    bool inCode = false;
-    int mathBlockLine = -1;
-    int mathBlockStart = -1;
-    for (int index = 0; index < lines.size(); ++index) {
-        const QString &line = lines.at(index);
-        const int lineEnd = lineStart + int(line.length());
-        const QString trimmed = line.trimmed();
-
-        if (mathBlockLine < 0 && fenceRe().match(line).hasMatch()) {
-            inCode = !inCode;
-        } else if (!inCode && mathBlockLine >= 0) {
-            if (trimmed.contains(QStringLiteral("$$"))) {
-                if (position >= mathBlockStart && position <= lineEnd) {
-                    const int contentStart = int(text.indexOf(QStringLiteral("$$"), mathBlockStart)) + 2;
-                    const int closing = lineStart + int(line.indexOf(QStringLiteral("$$")));
-                    return {text.mid(contentStart, closing - contentStart).trimmed(),
-                            mathBlockStart, closing + 2, true};
-                }
-                mathBlockLine = -1;
-            }
-        } else if (!inCode && trimmed.startsWith(QStringLiteral("$$"))
-                   && trimmed.count(QStringLiteral("$$")) == 1) {
-            mathBlockLine = index;
-            mathBlockStart = lineStart + int(line.indexOf(QStringLiteral("$$")));
-        } else if (!inCode && position >= lineStart && position <= lineEnd) {
-            const int column = position - lineStart;
-            for (const VerbatimSpan &span : verbatimSpans(line)) {
-                if (!span.math || column < span.span.start
-                        || column > span.span.start + span.span.length)
-                    continue;
-                const bool display = line.mid(span.span.start, 2) == QStringLiteral("$$");
-                const int marker = display ? 2 : 1;
-                return {line.mid(span.span.start + marker, span.span.length - 2 * marker).trimmed(),
-                        lineStart + span.span.start,
-                        lineStart + span.span.start + span.span.length, display};
-            }
-            return {};
-        }
-
-        if (lineStart > position && mathBlockLine < 0)
-            break;
-        lineStart = lineEnd + 1;
-    }
-    return {};
-}
-
 QList<MarkdownHighlighter::InlineMarkup> MarkdownHighlighter::inlineMarkup(const QString &original) {
     QList<InlineMarkup> markup;
     if (!original.contains(QLatin1Char('*')) && !original.contains(QLatin1Char('_'))

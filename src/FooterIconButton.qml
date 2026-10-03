@@ -54,6 +54,12 @@ Item {
                 context.lineTo(4.5, 9.5);
                 context.lineTo(11.5, 9.5);
                 context.lineTo(11.5, 13.5);
+            } else if (control.iconName === "preview") {
+                context.moveTo(1.5, 8);
+                context.quadraticCurveTo(8, 1.5, 14.5, 8);
+                context.quadraticCurveTo(8, 14.5, 1.5, 8);
+                context.moveTo(10.2, 8);
+                context.arc(8, 8, 2.2, 0, 2 * Math.PI);
             } else if (control.iconName === "theme") {
                 context.arc(8, 8, 5.5, 0, 2 * Math.PI);
                 context.moveTo(8, 2.5);

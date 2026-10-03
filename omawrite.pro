@@ -20,7 +20,7 @@ HEADERS += \
     src/vault.h \
     src/themes.h \
     src/spellchecker.h \
-    src/mathrenderer.h
+    src/preview.h
 
 SOURCES += \
     src/main.cpp \
@@ -29,11 +29,9 @@ SOURCES += \
     src/systemtheme.cpp \
     src/vault.cpp \
     src/themes.cpp \
-    src/mathrenderer.cpp
+    src/preview.cpp
 
 RESOURCES += src/resources.qrc
-
-include(3rdparty/microtex/microtex.pri)
 
 macx {
     OBJECTIVE_SOURCES += src/spellchecker_mac.mm

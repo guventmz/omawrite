@@ -10,14 +10,14 @@ SOURCES += \
     ../src/markdownhighlighter.cpp \
     ../src/vault.cpp \
     ../src/themes.cpp \
-    ../src/mathrenderer.cpp
+    ../src/preview.cpp
 HEADERS += \
     ../src/backend.h \
     ../src/markdownhighlighter.h \
     ../src/vault.h \
     ../src/themes.h \
     ../src/spellchecker.h \
-    ../src/mathrenderer.h
+    ../src/preview.h
 
 QT += widgets printsupport quickcontrols2 quickdialogs2
 !macx: QT += dbus
@@ -30,5 +30,4 @@ macx {
 } else {
     SOURCES += ../src/spellchecker_stub.cpp
 }
-
-include(../3rdparty/microtex/microtex.pri)
+RESOURCES += ../src/resources.qrc

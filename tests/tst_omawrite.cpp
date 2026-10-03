@@ -10,7 +10,7 @@
 #include "vault.h"
 #include "themes.h"
 #include "spellchecker.h"
-#include "mathrenderer.h"
+#include "preview.h"
 #include <QTextBlock>
 #include <QTextDocument>
 
@@ -401,28 +401,6 @@ private slots:
 
     }
 
-    void findsMathUnderTheCaret() {
-        const QString text = QStringLiteral(
-            "Inline $x_1^2$ here.\n"
-            "$$\nA = \\begin{bmatrix}1\\\\2\\end{bmatrix}\n$$\n"
-            "```\n$not math$\n```\n"
-            "Also $$\\frac{a}{b}$$ end.");
-        const auto inlineMath = MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("x_1")));
-        QCOMPARE(inlineMath.latex, QStringLiteral("x_1^2"));
-        QVERIFY(!inlineMath.display);
-        QCOMPARE(text.mid(inlineMath.start, inlineMath.end - inlineMath.start), QStringLiteral("$x_1^2$"));
-
-        const auto block = MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("bmatrix")));
-        QCOMPARE(block.latex, QStringLiteral("A = \\begin{bmatrix}1\\\\2\\end{bmatrix}"));
-        QVERIFY(block.display);
-        QVERIFY(text.mid(block.start, block.end - block.start).startsWith(QStringLiteral("$$\nA =")));
-
-        QVERIFY(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("not math"))).latex.isEmpty());
-        QVERIFY(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("here"))).latex.isEmpty());
-        QCOMPARE(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("frac"))).latex,
-                 QStringLiteral("\\frac{a}{b}"));
-    }
-
     void checksSpellingInProseOnly() {
         if (!SpellChecker::available())
             QSKIP("No system spell checker on this platform");
@@ -461,20 +439,28 @@ private slots:
         backend.setAutocorrectEnabled(false);
     }
 
-    void rendersMath() {
-        QString error;
-        const QImage matrix = MathImageProvider::render(
-            QStringLiteral("x=\\begin{bmatrix}x_1\\\\x_2\\end{bmatrix}"), 20, Qt::white, 2, &error);
-        QVERIFY2(!matrix.isNull(), qPrintable(error));
-        QVERIFY(matrix.width() > 80);
-        QVERIFY(matrix.height() > matrix.width() / 4);
-        QCOMPARE(matrix.devicePixelRatio(), 2.0);
+    void buildsABrowserPreview() {
+        const QString note = QStringLiteral(
+            "# Title\nInline $x_1^2$ and [[Deep Work|focus]].\n"
+            "$$\nA = \\begin{bmatrix}1\\\\2\\end{bmatrix}\n$$\n"
+            "```python\nprice = \"$5 and $6\"  # [[not a link]]\n```\n"
+            "Ends </script> here.");
+        Preview::Style style{Themes::palette(QStringLiteral("nord"), true), true,
+                             QStringLiteral("IBM Plex Mono"), 22};
+        const QString page = Preview::html(note, QStringLiteral("Title"),
+                                           QUrl::fromLocalFile(QStringLiteral("/notes/")), style);
 
-        QVERIFY(MathImageProvider::render(QStringLiteral("}"), 20, Qt::white, 1, &error).isNull());
-        QVERIFY(!error.isEmpty());
-        QVERIFY(MathImageProvider::render(QStringLiteral("\\newcommand{\\x}{\\x}\\x"), 20,
-                                          Qt::white, 1, &error).isNull());
-        QVERIFY(MathImageProvider::render(QStringLiteral("  "), 20, Qt::white, 1, &error).isNull());
+        QVERIFY(page.contains(QStringLiteral("OMAWRITEMATH0X")));
+        QVERIFY(page.contains(QStringLiteral("OMAWRITEMATH1X")));
+        QVERIFY(!page.contains(QStringLiteral("OMAWRITEMATH2X")));
+        QVERIFY(page.contains(QStringLiteral("x_1^2")));
+        QVERIFY(page.contains(QStringLiteral("<span class=\\\"wikilink\\\">focus<\\/span>")));
+        QVERIFY(page.contains(QStringLiteral("# [[not a link]]")));
+        QVERIFY(page.contains(QStringLiteral("<base href=\"file:///notes/\">")));
+        QVERIFY(page.contains(QStringLiteral("#2e3440")));
+        QVERIFY(page.contains(QStringLiteral("font-size: 22px")));
+        QVERIFY(page.contains(QStringLiteral("@font-face")));
+        QCOMPARE(page.count(QStringLiteral("</script>")), 5);
     }
 
     void remembersThemeAndWrap() {

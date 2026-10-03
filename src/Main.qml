@@ -377,6 +377,12 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+Shift+V"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.previewInBrowser()
+    }
+
+    Shortcut {
         sequence: "Ctrl+P"
         context: Qt.ApplicationShortcut
         onActivated: win.openNotePicker("open")
@@ -788,8 +794,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         contentItem: Label {
             text: win.macOS
-                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌃⌘D  Look Up\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
-                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Alt+T  Theme\nCtrl+Alt+L  Wrap: Column / Window / Off\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
+                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⇧⌘V  Preview in Browser\n⌃⌘D  Look Up\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+Shift+V  Preview in Browser\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Alt+T  Theme\nCtrl+Alt+L  Wrap: Column / Window / Off\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
     }
@@ -1045,7 +1051,6 @@ ApplicationWindow {
                 onCursorPositionChanged: {
                     backend.setCaretPosition(cursorPosition);
                     spellingRefresh.restart();
-                    mathLookup.restart();
                 }
                 onFontChanged: {
                     backend.documentFontChanged();
@@ -1273,99 +1278,11 @@ ApplicationWindow {
 
                 onTextChanged: {
                     spellingRefresh.restart();
-                    mathLookup.restart();
                     if (win.searchUpdating)
                         return;
                     var contentChanged = backend.editorTextChanged();
                     if (win.searchOpen && contentChanged)
                         win.updateSearch();
-                }
-
-                Timer {
-                    id: mathLookup
-                    interval: 120
-                    onTriggered: {
-                        var math = backend.mathAt(editor.cursorPosition);
-                        if (math.start !== mathPreview.math.start)
-                            mathPreview.shownSource = "";
-                        mathPreview.math = math;
-                    }
-                }
-
-                // The rendered formula under the caret, floating just below
-                // its source. While a formula is half-typed and will not
-                // parse, the last good render stays up.
-                Rectangle {
-                    id: mathPreview
-                    objectName: "mathPreview"
-
-                    property var math: ({})
-                    property string shownSource: ""
-                    readonly property bool active: math.latex !== undefined && editor.activeFocus
-                                                   && !win.searchOpen
-                    readonly property rect below: active ? editor.positionToRectangle(math.end)
-                                                         : Qt.rect(0, 0, 0, 0)
-                    readonly property rect from: active ? editor.positionToRectangle(math.start)
-                                                        : Qt.rect(0, 0, 0, 0)
-                    readonly property string source: active
-                        ? "image://math/" + Math.round(win.editorFontPixelSize * 1.15) + "/"
-                          + Screen.devicePixelRatio + "/" + String(win.textColor) + "/"
-                          + hexLatex(math.latex)
-                        : ""
-
-                    function hexLatex(latex) {
-                        var hex = "";
-                        for (var i = 0; i < latex.length; ++i)
-                            hex += ("000" + latex.charCodeAt(i).toString(16)).slice(-4);
-                        return hex;
-                    }
-
-                    visible: active && shownSource !== ""
-                    z: 5
-                    x: math.display ? 0 : Math.max(0, Math.min(from.x, editor.width - width))
-                    y: below.y + below.height + 6
-                    width: Math.min(editor.width, renderedMath.width + 24)
-                    height: renderedMath.height + 16 + (pending.visible ? pending.height : 0)
-                    radius: 6
-                    color: win.surfaceColor
-                    border.width: 1
-                    border.color: Qt.rgba(0.5, 0.5, 0.5, 0.25)
-
-                    Image {
-                        id: probe
-                        visible: false
-                        asynchronous: true
-                        source: mathPreview.source
-                        onStatusChanged: {
-                            if (status === Image.Ready)
-                                mathPreview.shownSource = source;
-                        }
-                    }
-
-                    Image {
-                        id: renderedMath
-                        anchors.top: parent.top
-                        anchors.topMargin: 8
-                        anchors.horizontalCenter: parent.horizontalCenter
-                        source: mathPreview.shownSource
-                        readonly property real naturalWidth: sourceSize.width / Screen.devicePixelRatio
-                        readonly property real naturalHeight: sourceSize.height / Screen.devicePixelRatio
-                        width: Math.min(naturalWidth, editor.width - 24)
-                        height: naturalWidth > 0 ? naturalHeight * width / naturalWidth : 0
-                        fillMode: Image.PreserveAspectFit
-                        smooth: true
-                    }
-
-                    Label {
-                        id: pending
-                        anchors.top: renderedMath.bottom
-                        anchors.right: parent.right
-                        anchors.rightMargin: 8
-                        visible: probe.status === Image.Error || probe.status === Image.Loading
-                        text: "…"
-                        color: win.mutedColor
-                        font.pixelSize: win.scaledSize(12)
-                    }
                 }
 
                 // Qt Quick ignores underline colors, so misspellings get the
@@ -1470,6 +1387,14 @@ ApplicationWindow {
                 iconColor: win.mutedColor
                 tooltip: "Font"
                 onClicked: fontPicker.opened ? fontPicker.close() : fontPicker.open()
+            }
+
+            FooterIconButton {
+                objectName: "previewButton"
+                iconName: "preview"
+                iconColor: win.mutedColor
+                tooltip: "Preview in Browser"
+                onClicked: backend.previewInBrowser()
             }
 
             FooterIconButton {

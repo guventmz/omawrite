@@ -35,6 +35,7 @@
 #include <cmath>
 
 #include "markdownhighlighter.h"
+#include "preview.h"
 #include "spellchecker.h"
 
 constexpr qreal typoraLineHeightPercent = 140;
@@ -409,15 +410,6 @@ void Backend::lookUp(const QString &text, qreal x, qreal y, qreal pointSize) {
     SpellChecker::lookUp(m_parentWindow, text, QPointF(x, y), pointSize);
 }
 
-QVariantMap Backend::mathAt(int position) const {
-    const MarkdownHighlighter::MathSource math =
-        MarkdownHighlighter::mathAt(currentDocumentText(), position);
-    if (math.latex.isEmpty())
-        return {};
-    return {{QStringLiteral("latex"), math.latex}, {QStringLiteral("start"), math.start},
-            {QStringLiteral("end"), math.end}, {QStringLiteral("display"), math.display}};
-}
-
 // Zoom moves in 10% steps between 50% and 300%; zero steps only snaps a
 // stored value back onto that grid.
 qreal Backend::steppedZoom(qreal zoom, int steps) {
@@ -576,6 +568,37 @@ void Backend::printDocument() {
         rendered.setMarkdown(currentDocumentText());
         rendered.print(&printer);
     }
+}
+
+// Writes the note as a themed HTML page and opens it in the default browser.
+// Each note keeps one page in the cache, so previewing again just refreshes it.
+void Backend::previewInBrowser() {
+    const QString directory = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
+        + QStringLiteral("/preview");
+    QDir().mkpath(directory);
+    const QString title = QFileInfo(fileName()).completeBaseName();
+    const QString path = QDir(directory).filePath(
+        QString(title).replace(QRegularExpression(QStringLiteral("[^\\w .-]")), QStringLiteral("-"))
+        + QStringLiteral(".html"));
+
+    const QUrl baseUrl = m_fileUrl.isLocalFile()
+        ? QUrl::fromLocalFile(QFileInfo(m_fileUrl.toLocalFile()).absolutePath() + QLatin1Char('/'))
+        : QUrl();
+    const Preview::Style style{m_palette, m_darkMode, m_editorFont,
+                               qRound(20 * m_textScale * m_textZoom)};
+
+    QSaveFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        setStatus(QStringLiteral("Could not write the preview."));
+        return;
+    }
+    file.write(Preview::html(currentDocumentText(), title, baseUrl, style).toUtf8());
+    if (!file.commit()) {
+        setStatus(QStringLiteral("Could not write the preview."));
+        return;
+    }
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    setStatus(QStringLiteral("Opened preview in browser"));
 }
 
 void Backend::newWindow() {

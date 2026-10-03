@@ -50,15 +50,6 @@ public:
     static QList<InlineMarkup> inlineMarkup(const QString &text);
     static QList<VerbatimSpan> verbatimSpans(const QString &text);
 
-    // The LaTeX under a caret position, without its dollar signs, and the
-    // document range it came from; empty when the caret is not in math.
-    struct MathSource {
-        QString latex;
-        int start = -1;
-        int end = -1;
-        bool display = false;
-    };
-    static MathSource mathAt(const QString &text, int position);
     static QString proseText(const QString &text);
 
 protected:
