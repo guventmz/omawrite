@@ -33,11 +33,22 @@ Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 - `Ctrl+Alt+T` (or the half-circle button in the footer) picks a theme: Omawrite, Paper, Nord,
   Solarized, Gruvbox or High Contrast. Arrow keys preview live, Enter keeps, Escape reverts.
   Each theme has a light and a dark variant that follows the system; headings get their
-  own color and size. The Omawrite theme still takes Omarchy's colors.
+  own color. The Omawrite theme still takes Omarchy's colors.
 - `Ctrl+Alt+L` cycles wrapping: a readable column, the window width, or off (long lines
   scroll sideways). Also in the font popup.
 - Fenced code blocks get light syntax colors in a monospace font, and `$inline$` and
   `$$display$$` math are colored and kept verbatim, so Markdown never mangles them.
+
+## Spelling (macOS)
+
+Omawrite uses the system spell checker, so your languages, learned words and
+System Settings preferences carry over:
+
+- Misspelled prose gets the usual red dots; code, math, links and URLs are never checked.
+- Right-click (or Control-click) a word for suggestions, Learn / Ignore Spelling, Look Up,
+  and the spelling toggles. `⌃⌘D` looks up the word at the cursor.
+- Your text replacements (System Settings > Keyboard > Text Replacements) expand as you
+  type, and spelling is corrected automatically when that system setting is on.
 
 ## Shortcuts
 

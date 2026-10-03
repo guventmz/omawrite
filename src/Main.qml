@@ -56,6 +56,7 @@ ApplicationWindow {
     property var backStack: []
     property var forwardStack: []
     property int backlinkCount: 0
+    property var misspellings: []
 
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
@@ -187,6 +188,43 @@ ApplicationWindow {
         if (closed)
             editor.cursorPosition = position + title.length + 2;
         editor.forceActiveFocus();
+    }
+
+    // Text replacements and spelling correction land when a word is finished,
+    // just before the space, punctuation or newline that finishes it.
+    function applyAutocorrection() {
+        var fix = backend.autocorrection(editor.cursorPosition);
+        if (fix.replacement !== undefined)
+            EditorMutations.replaceRange(editor, fix.start, fix.end, fix.replacement);
+    }
+
+    function lookUp(word, position) {
+        var rect = editor.positionToRectangle(position);
+        var point = editor.mapToItem(null, rect.x, rect.y + rect.height * 0.78);
+        backend.lookUp(word, point.x, point.y, editor.font.pixelSize);
+    }
+
+    function lookUpAtCursor() {
+        var start = Math.min(editor.selectionStart, editor.selectionEnd);
+        var end = Math.max(editor.selectionStart, editor.selectionEnd);
+        if (start === end) {
+            var hit = backend.wordAt(editor.text, editor.cursorPosition);
+            start = hit.start;
+            end = hit.end;
+        }
+        if (end > start)
+            lookUp(editor.text.slice(start, end), start);
+    }
+
+    // Only the visible part of the page is checked, so long notes stay cheap.
+    function refreshMisspellings() {
+        if (!backend.spellCheckEnabled) {
+            misspellings = [];
+            return;
+        }
+        var top = Math.max(0, editorFlick.contentY - editor.y);
+        misspellings = backend.misspellingsBetween(editor.positionAt(0, top),
+                                                   editor.positionAt(editor.width, top + editorFlick.height));
     }
 
     function refreshBacklinkCount() {
@@ -437,6 +475,13 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+Meta+D"
+        context: Qt.ApplicationShortcut
+        enabled: win.macOS
+        onActivated: win.lookUpAtCursor()
+    }
+
+    Shortcut {
         sequence: "Ctrl+W"
         context: Qt.ApplicationShortcut
         enabled: win.macOS
@@ -498,6 +543,11 @@ ApplicationWindow {
 
         function onFileUrlChanged() {
             win.refreshBacklinkCount();
+            spellingRefresh.restart();
+        }
+
+        function onSpellingChanged() {
+            spellingRefresh.restart();
         }
 
         function onSaveSucceeded() {
@@ -533,6 +583,133 @@ ApplicationWindow {
             win.awaitingPendingSave = false;
             win.pendingAction = "";
         }
+    }
+
+    Menu {
+        id: editorMenu
+        objectName: "editorMenu"
+        popupType: Popup.Native
+
+        property string word
+        property int wordStart: -1
+        property int wordEnd: -1
+        property bool misspelled: false
+        property var guesses: []
+
+        // Like a native text view: right-clicking outside the selection
+        // selects the word under the pointer first.
+        function openAt(position) {
+            var selectionStart = Math.min(editor.selectionStart, editor.selectionEnd);
+            var selectionEnd = Math.max(editor.selectionStart, editor.selectionEnd);
+            var inSelection = selectionStart !== selectionEnd
+                && position >= selectionStart && position <= selectionEnd;
+            if (inSelection) {
+                wordStart = selectionStart;
+                wordEnd = selectionEnd;
+            } else {
+                var hit = backend.wordAt(editor.text, position);
+                wordStart = hit.start;
+                wordEnd = hit.end;
+                if (hit.end > hit.start)
+                    editor.select(hit.start, hit.end);
+                else
+                    editor.cursorPosition = position;
+            }
+            word = editor.text.slice(wordStart, wordEnd);
+            misspelled = !inSelection && backend.isMisspelled(word);
+            guesses = misspelled ? backend.spellingGuesses(word) : [];
+            editor.forceActiveFocus();
+            popup();
+        }
+
+        Instantiator {
+            model: editorMenu.guesses
+            delegate: MenuItem {
+                required property string modelData
+                text: modelData
+                onTriggered: EditorMutations.replaceRange(editor, editorMenu.wordStart,
+                                                          editorMenu.wordEnd, modelData)
+            }
+            onObjectAdded: function(index, object) { editorMenu.insertItem(index, object); }
+            onObjectRemoved: function(index, object) { editorMenu.removeItem(object); }
+        }
+
+        MenuItem {
+            text: "No Guesses Found"
+            enabled: false
+            visible: editorMenu.misspelled && editorMenu.guesses.length === 0
+            height: visible ? implicitHeight : 0
+        }
+        MenuSeparator {
+            visible: editorMenu.misspelled
+            height: visible ? implicitHeight : 0
+        }
+        MenuItem {
+            text: "Learn Spelling"
+            visible: editorMenu.misspelled
+            height: visible ? implicitHeight : 0
+            onTriggered: backend.learnWord(editorMenu.word)
+        }
+        MenuItem {
+            text: "Ignore Spelling"
+            visible: editorMenu.misspelled
+            height: visible ? implicitHeight : 0
+            onTriggered: backend.ignoreWord(editorMenu.word)
+        }
+        MenuSeparator {
+            visible: editorMenu.misspelled
+            height: visible ? implicitHeight : 0
+        }
+        MenuItem {
+            text: "Look Up “" + (editorMenu.word.length > 24 ? editorMenu.word.slice(0, 24) + "…"
+                                                                 : editorMenu.word) + "”"
+            visible: win.macOS && editorMenu.word.trim().length > 0
+            height: visible ? implicitHeight : 0
+            onTriggered: win.lookUp(editorMenu.word, editorMenu.wordStart)
+        }
+        MenuSeparator {
+            visible: win.macOS && editorMenu.word.trim().length > 0
+            height: visible ? implicitHeight : 0
+        }
+        MenuItem {
+            text: "Cut"
+            enabled: editor.selectedText.length > 0
+            onTriggered: editor.cut()
+        }
+        MenuItem {
+            text: "Copy"
+            enabled: editor.selectedText.length > 0
+            onTriggered: editor.copy()
+        }
+        MenuItem {
+            text: "Paste"
+            onTriggered: {
+                if (!editor.pasteClipboardUrlAsMarkdownLink())
+                    editor.pasteClipboardAsPlainText();
+            }
+        }
+        MenuSeparator {
+            visible: backend.spellCheckAvailable
+            height: visible ? implicitHeight : 0
+        }
+        MenuItem {
+            text: "Check Spelling While Typing"
+            checkable: true
+            checked: backend.spellCheckEnabled
+            visible: backend.spellCheckAvailable
+            height: visible ? implicitHeight : 0
+            onTriggered: backend.spellCheckEnabled = checked
+        }
+        MenuItem {
+            text: "Correct Spelling Automatically"
+            checkable: true
+            checked: backend.autocorrectEnabled
+            visible: backend.spellCheckAvailable
+            enabled: backend.spellCheckEnabled
+            height: visible ? implicitHeight : 0
+            onTriggered: backend.autocorrectEnabled = checked
+        }
+        onClosed: editor.forceActiveFocus()
     }
 
     Dialogs.FolderDialog {
@@ -611,7 +788,7 @@ ApplicationWindow {
         anchors.centerIn: parent
         contentItem: Label {
             text: win.macOS
-                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌃⌘D  Look Up\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
                 : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Alt+T  Theme\nCtrl+Alt+L  Wrap: Column / Window / Off\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
@@ -759,6 +936,14 @@ ApplicationWindow {
             }
 
             onMovementStarted: wheelScroll.stop()
+            onContentYChanged: spellingRefresh.restart()
+            onWidthChanged: spellingRefresh.restart()
+
+            Timer {
+                id: spellingRefresh
+                interval: 250
+                onTriggered: win.refreshMisspellings()
+            }
 
             function scrollByWheel(wheel) {
                 // High-resolution wheels report fractional notches; feed
@@ -857,7 +1042,14 @@ ApplicationWindow {
                     color: win.strongTextColor
                 }
                 onCursorRectangleChanged: editorFlick.ensureCursorVisible()
-                onFontChanged: backend.documentFontChanged()
+                onCursorPositionChanged: {
+                    backend.setCaretPosition(cursorPosition);
+                    spellingRefresh.restart();
+                }
+                onFontChanged: {
+                    backend.documentFontChanged();
+                    spellingRefresh.restart();
+                }
 
                 function replaceSelectionWith(replacement) {
                     var start = Math.min(selectionStart, selectionEnd);
@@ -1053,6 +1245,9 @@ ApplicationWindow {
 
                     var returnKey = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
                     var commandModifier = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier);
+                    var wordBoundary = event.text === " " || /^[.,;:!?)]$/.test(event.text) || returnKey;
+                    if (wordBoundary && !commandModifier && selectionStart === selectionEnd)
+                        win.applyAutocorrection();
                     if (returnKey && !commandModifier) {
                         smartReturn(event.modifiers & Qt.ShiftModifier);
                         event.accepted = true;
@@ -1076,11 +1271,56 @@ ApplicationWindow {
                 }
 
                 onTextChanged: {
+                    spellingRefresh.restart();
                     if (win.searchUpdating)
                         return;
                     var contentChanged = backend.editorTextChanged();
                     if (win.searchOpen && contentChanged)
                         win.updateSearch();
+                }
+
+                // Qt Quick ignores underline colors, so misspellings get the
+                // system's red dots drawn over the text instead.
+                Repeater {
+                    model: win.misspellings
+                    delegate: Canvas {
+                        required property var modelData
+                        readonly property rect first: editor.positionToRectangle(modelData.start)
+                        readonly property rect last: editor.positionToRectangle(modelData.end)
+                        x: first.x
+                        y: first.y + Math.round(editor.font.pixelSize * 1.18)
+                        width: Math.max(4, (last.y > first.y ? editor.width : last.x) - first.x)
+                        height: 3
+                        onWidthChanged: requestPaint()
+                        onPaint: {
+                            var context = getContext("2d");
+                            context.clearRect(0, 0, width, height);
+                            context.fillStyle = win.darkMode ? "#ff6b6b" : "#e0352b";
+                            for (var dot = 1.5; dot < width; dot += 3.5) {
+                                context.beginPath();
+                                context.arc(dot, 1.5, 1.1, 0, 2 * Math.PI);
+                                context.fill();
+                            }
+                        }
+                    }
+                }
+
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    onTapped: function(eventPoint) {
+                        editorMenu.openAt(editor.positionAt(eventPoint.position.x,
+                                                            eventPoint.position.y));
+                    }
+                }
+
+                // Control-click is the Mac's other right click.
+                TapHandler {
+                    acceptedModifiers: Qt.MetaModifier
+                    enabled: win.macOS
+                    onTapped: function(eventPoint) {
+                        editorMenu.openAt(editor.positionAt(eventPoint.position.x,
+                                                            eventPoint.position.y));
+                    }
                 }
 
                 TapHandler {

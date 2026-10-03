@@ -18,7 +18,8 @@ HEADERS += \
     src/markdownhighlighter.h \
     src/systemtheme.h \
     src/vault.h \
-    src/themes.h
+    src/themes.h \
+    src/spellchecker.h
 
 SOURCES += \
     src/main.cpp \
@@ -29,3 +30,11 @@ SOURCES += \
     src/themes.cpp
 
 RESOURCES += src/resources.qrc
+
+macx {
+    OBJECTIVE_SOURCES += src/spellchecker_mac.mm
+    QMAKE_OBJECTIVE_CFLAGS += -fobjc-arc
+    LIBS += -framework AppKit
+} else {
+    SOURCES += src/spellchecker_stub.cpp
+}

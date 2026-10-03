@@ -9,7 +9,6 @@
 
 namespace {
 const QString codeFontFamily = QStringLiteral("IBM Plex Mono");
-constexpr qreal headingScales[6] = {1.5, 1.3, 1.15, 1.05, 1.0, 1.0};
 
 const QRegularExpression &fenceRe() {
     static const QRegularExpression re(QStringLiteral("^\\s{0,3}(```|~~~)\\s*([\\w+#.-]*)"));
@@ -48,8 +47,8 @@ void MarkdownHighlighter::setDarkMode(bool darkMode) {
     rehighlight();
 }
 
-// The hidden marker spacing and heading sizes are measured from the document's
-// default font, so they have to be remeasured whenever the editor font changes.
+// The hidden marker spacing is measured from the document's default font, so
+// it has to be remeasured whenever the editor switches typeface.
 void MarkdownHighlighter::refreshFont() {
     rebuildFormats();
     rehighlight();
@@ -141,16 +140,11 @@ void MarkdownHighlighter::rebuildFormats() {
     m_hiddenMarkerFormat.setFontLetterSpacingType(QFont::AbsoluteSpacing);
     m_hiddenMarkerFormat.setFontLetterSpacing(-charWidth);
 
-    const int basePixels = baseFont.pixelSize() > 0 ? baseFont.pixelSize() : 20;
-    for (int level = 0; level < 6; ++level) {
-        const int pixels = qRound(basePixels * headingScales[level]);
-        m_headingFormats[level] = QTextCharFormat();
-        m_headingFormats[level].setForeground(QColor(m_palette.heading));
-        m_headingFormats[level].setFontWeight(QFont::Bold);
-        m_headingFormats[level].setProperty(QTextFormat::FontPixelSize, pixels);
-        m_headingMarkerFormats[level] = m_markerFormat;
-        m_headingMarkerFormats[level].setProperty(QTextFormat::FontPixelSize, pixels);
-    }
+    // Headings stay at body size; the theme's heading color and bold weight
+    // set them apart.
+    m_headingFormat = QTextCharFormat();
+    m_headingFormat.setForeground(QColor(m_palette.heading));
+    m_headingFormat.setFontWeight(QFont::Bold);
 
     m_boldFormat = QTextCharFormat();
     m_boldFormat.setFontWeight(QFont::Bold);
@@ -211,6 +205,26 @@ void MarkdownHighlighter::highlightBlock(const QString &text) {
         }
     }
     highlightSearch(text);
+}
+
+// A copy of a line with code, math, URLs and link destinations blanked out,
+// so only prose is left for the spell checker; positions are unchanged.
+QString MarkdownHighlighter::proseText(const QString &text) {
+    QString prose = text;
+    const auto blank = [&prose](int start, int length) {
+        for (int i = start; i < start + length; ++i)
+            prose[i] = QLatin1Char(' ');
+    };
+    for (const VerbatimSpan &verbatim : verbatimSpans(text))
+        blank(verbatim.span.start, verbatim.span.length);
+    static const QRegularExpression nonProseRe(
+        QStringLiteral("\\]\\([^)]*\\)|[a-zA-Z][a-zA-Z0-9+.-]*://\\S+|www\\.\\S+|\\S+@\\S+"));
+    QRegularExpressionMatchIterator matches = nonProseRe.globalMatch(text);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+        blank(int(match.capturedStart()), int(match.capturedLength()));
+    }
+    return prose;
 }
 
 bool MarkdownHighlighter::highlightFencedCode(const QString &text) {
@@ -339,11 +353,10 @@ void MarkdownHighlighter::highlightMarkers(const QString &text) {
         static const QRegularExpression headingRe(QStringLiteral("^(#{1,6})(\\s+)(.*)$"));
         const QRegularExpressionMatch heading = headingRe.match(text);
         if (heading.hasMatch()) {
-            const int level = int(heading.capturedLength(1)) - 1;
             setFormat(0, heading.capturedLength(1) + heading.capturedLength(2),
-                      m_headingMarkerFormats[level]);
+                      m_markerFormat);
             setFormat(heading.capturedStart(3), heading.capturedLength(3),
-                      m_headingFormats[level]);
+                      m_headingFormat);
             return;
         }
     }
@@ -377,7 +390,7 @@ void MarkdownHighlighter::highlightMarkers(const QString &text) {
 
 void MarkdownHighlighter::highlightInline(const QString &text) {
     // Merge onto what is already there, so emphasis inside a heading keeps the
-    // heading's size and color.
+    // heading's color.
     const auto apply = [this](const Span &span, const QTextCharFormat &extra) {
         QTextCharFormat merged = format(span.start);
         merged.merge(extra);
@@ -394,7 +407,7 @@ void MarkdownHighlighter::highlightInline(const QString &text) {
             : item.kind == InlineKind::Italic ? m_italicFormat
                                               : m_linkFormat;
         if (item.kind != InlineKind::Link
-                && format(item.content.start).hasProperty(QTextFormat::FontPixelSize))
+                && format(item.content.start).foreground() == m_headingFormat.foreground())
             content.clearForeground();
         apply(item.content, content);
         for (const Span &marker : item.markers)
@@ -432,6 +445,57 @@ QList<MarkdownHighlighter::VerbatimSpan> MarkdownHighlighter::verbatimSpans(cons
         return a.span.start < b.span.start;
     });
     return spans;
+}
+
+MarkdownHighlighter::MathSource MarkdownHighlighter::mathAt(const QString &text, int position) {
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    // Walk the lines once, tracking fences and $$ blocks the same way the
+    // highlighter does, until reaching the caret's line.
+    int lineStart = 0;
+    bool inCode = false;
+    int mathBlockLine = -1;
+    int mathBlockStart = -1;
+    for (int index = 0; index < lines.size(); ++index) {
+        const QString &line = lines.at(index);
+        const int lineEnd = lineStart + int(line.length());
+        const QString trimmed = line.trimmed();
+
+        if (mathBlockLine < 0 && fenceRe().match(line).hasMatch()) {
+            inCode = !inCode;
+        } else if (!inCode && mathBlockLine >= 0) {
+            if (trimmed.contains(QStringLiteral("$$"))) {
+                if (position >= mathBlockStart && position <= lineEnd) {
+                    const int contentStart = int(text.indexOf(QStringLiteral("$$"), mathBlockStart)) + 2;
+                    const int closing = lineStart + int(line.indexOf(QStringLiteral("$$")));
+                    return {text.mid(contentStart, closing - contentStart).trimmed(),
+                            mathBlockStart, closing + 2, true};
+                }
+                mathBlockLine = -1;
+            }
+        } else if (!inCode && trimmed.startsWith(QStringLiteral("$$"))
+                   && trimmed.count(QStringLiteral("$$")) == 1) {
+            mathBlockLine = index;
+            mathBlockStart = lineStart + int(line.indexOf(QStringLiteral("$$")));
+        } else if (!inCode && position >= lineStart && position <= lineEnd) {
+            const int column = position - lineStart;
+            for (const VerbatimSpan &span : verbatimSpans(line)) {
+                if (!span.math || column < span.span.start
+                        || column > span.span.start + span.span.length)
+                    continue;
+                const bool display = line.mid(span.span.start, 2) == QStringLiteral("$$");
+                const int marker = display ? 2 : 1;
+                return {line.mid(span.span.start + marker, span.span.length - 2 * marker).trimmed(),
+                        lineStart + span.span.start,
+                        lineStart + span.span.start + span.span.length, display};
+            }
+            return {};
+        }
+
+        if (lineStart > position && mathBlockLine < 0)
+            break;
+        lineStart = lineEnd + 1;
+    }
+    return {};
 }
 
 QList<MarkdownHighlighter::InlineMarkup> MarkdownHighlighter::inlineMarkup(const QString &original) {

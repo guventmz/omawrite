@@ -50,6 +50,17 @@ public:
     static QList<InlineMarkup> inlineMarkup(const QString &text);
     static QList<VerbatimSpan> verbatimSpans(const QString &text);
 
+    // The LaTeX under a caret position, without its dollar signs, and the
+    // document range it came from; empty when the caret is not in math.
+    struct MathSource {
+        QString latex;
+        int start = -1;
+        int end = -1;
+        bool display = false;
+    };
+    static MathSource mathAt(const QString &text, int position);
+    static QString proseText(const QString &text);
+
 protected:
     void highlightBlock(const QString &text) override;
 
@@ -66,8 +77,7 @@ private:
     ThemePalette m_palette;
     QTextCharFormat m_markerFormat;
     QTextCharFormat m_hiddenMarkerFormat;
-    QTextCharFormat m_headingFormats[6];
-    QTextCharFormat m_headingMarkerFormats[6];
+    QTextCharFormat m_headingFormat;
     QTextCharFormat m_boldFormat;
     QTextCharFormat m_italicFormat;
     QTextCharFormat m_codeFormat;

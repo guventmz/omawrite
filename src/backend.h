@@ -17,6 +17,7 @@ class MarkdownHighlighter;
 class QTextDocument;
 class QWindow;
 class QLockFile;
+class SpellChecker;
 
 class Backend : public QObject {
     Q_OBJECT
@@ -36,6 +37,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
     Q_PROPERTY(QVariantList themes READ themes NOTIFY themeColorsChanged)
     Q_PROPERTY(QString wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)
+    Q_PROPERTY(bool spellCheckAvailable READ spellCheckAvailable CONSTANT)
+    Q_PROPERTY(bool spellCheckEnabled READ spellCheckEnabled WRITE setSpellCheckEnabled NOTIFY spellCheckChanged)
+    Q_PROPERTY(bool autocorrectEnabled READ autocorrectEnabled WRITE setAutocorrectEnabled NOTIFY spellCheckChanged)
     Q_PROPERTY(QString editorFont READ editorFont WRITE setEditorFont NOTIFY editorFontChanged)
     Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
 
@@ -68,6 +72,20 @@ public:
     QString wrapMode() const { return m_wrapMode; }
     void setWrapMode(const QString &mode);
     Q_INVOKABLE void cycleWrapMode();
+    bool spellCheckAvailable() const;
+    bool spellCheckEnabled() const { return m_spellCheckEnabled; }
+    void setSpellCheckEnabled(bool enabled);
+    bool autocorrectEnabled() const { return m_autocorrectEnabled; }
+    void setAutocorrectEnabled(bool enabled);
+    Q_INVOKABLE QVariantMap wordAt(const QString &text, int position) const;
+    Q_INVOKABLE bool isMisspelled(const QString &word);
+    Q_INVOKABLE QStringList spellingGuesses(const QString &word);
+    Q_INVOKABLE void learnWord(const QString &word);
+    Q_INVOKABLE void ignoreWord(const QString &word);
+    Q_INVOKABLE QVariantMap autocorrection(int position);
+    Q_INVOKABLE void setCaretPosition(int position) { m_caretPosition = position; }
+    Q_INVOKABLE QVariantList misspellingsBetween(int start, int end);
+    Q_INVOKABLE void lookUp(const QString &text, qreal x, qreal y, qreal pointSize);
     QString editorFont() const { return m_editorFont; }
     void setEditorFont(const QString &family);
     QStringList availableFonts() const;
@@ -112,6 +130,8 @@ signals:
     void textZoomChanged();
     void themeChanged();
     void wrapModeChanged();
+    void spellCheckChanged();
+    void spellingChanged();
     void interfaceZoomChanged();
     void themeColorsChanged();
     void editorFontChanged();
@@ -176,6 +196,11 @@ private:
     QString m_theme;
     QString m_wrapMode;
     ThemePalette m_palette;
+    std::unique_ptr<SpellChecker> m_spellChecker;
+    bool m_spellCheckEnabled = true;
+    bool m_autocorrectEnabled = false;
+    int m_caretPosition = -1;
+    bool isProseAt(int position) const;
     QString m_editorFont;
     QFileSystemWatcher m_themeWatcher;
 };

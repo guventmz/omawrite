@@ -9,6 +9,7 @@
 #include "markdownhighlighter.h"
 #include "vault.h"
 #include "themes.h"
+#include "spellchecker.h"
 #include <QTextBlock>
 #include <QTextDocument>
 
@@ -397,6 +398,66 @@ private slots:
         QCOMPARE(MarkdownHighlighter::commentStyleFor(QStringLiteral("rust")),
                  MarkdownHighlighter::CommentStyle::Slash);
 
+    }
+
+    void findsMathUnderTheCaret() {
+        const QString text = QStringLiteral(
+            "Inline $x_1^2$ here.\n"
+            "$$\nA = \\begin{bmatrix}1\\\\2\\end{bmatrix}\n$$\n"
+            "```\n$not math$\n```\n"
+            "Also $$\\frac{a}{b}$$ end.");
+        const auto inlineMath = MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("x_1")));
+        QCOMPARE(inlineMath.latex, QStringLiteral("x_1^2"));
+        QVERIFY(!inlineMath.display);
+        QCOMPARE(text.mid(inlineMath.start, inlineMath.end - inlineMath.start), QStringLiteral("$x_1^2$"));
+
+        const auto block = MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("bmatrix")));
+        QCOMPARE(block.latex, QStringLiteral("A = \\begin{bmatrix}1\\\\2\\end{bmatrix}"));
+        QVERIFY(block.display);
+        QVERIFY(text.mid(block.start, block.end - block.start).startsWith(QStringLiteral("$$\nA =")));
+
+        QVERIFY(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("not math"))).latex.isEmpty());
+        QVERIFY(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("here"))).latex.isEmpty());
+        QCOMPARE(MarkdownHighlighter::mathAt(text, text.indexOf(QStringLiteral("frac"))).latex,
+                 QStringLiteral("\\frac{a}{b}"));
+    }
+
+    void checksSpellingInProseOnly() {
+        if (!SpellChecker::available())
+            QSKIP("No system spell checker on this platform");
+
+        SpellChecker checker;
+        const QList<SpellChecker::Range> wrong = checker.misspellings(QStringLiteral("I recieve the mail"));
+        QCOMPARE(wrong.size(), 1);
+        QCOMPARE(wrong.at(0).start, 2);
+        QCOMPARE(wrong.at(0).length, 7);
+        QVERIFY(checker.isMisspelled(QStringLiteral("recieve")));
+        QVERIFY(!checker.isMisspelled(QStringLiteral("receive")));
+        QVERIFY(checker.guesses(QStringLiteral("recieve")).contains(QStringLiteral("receive")));
+
+        Backend backend;
+        QQmlEngine engine;
+        QQmlComponent component(&engine);
+        component.setData("import QtQuick\nTextEdit { textFormat: TextEdit.PlainText }", QUrl());
+        QScopedPointer<QObject> editor(component.create());
+        QVERIFY(editor);
+        backend.attachDocument(editor->property("textDocument").value<QObject *>());
+        editor->setProperty("text", QStringLiteral(
+            "Some prose with recieve\n```\nrecieve = 1\n```\nsee https://exmaple.com/recieve"));
+
+        const QString text = editor->property("text").toString();
+        const int prose = text.indexOf(QStringLiteral("recieve")) + 7;
+        const QVariantMap fix = backend.autocorrection(prose);
+        backend.setAutocorrectEnabled(true);
+        const QVariantMap corrected = backend.autocorrection(prose);
+        QCOMPARE(corrected.value(QStringLiteral("replacement")).toString(), QStringLiteral("receive"));
+        QVERIFY(backend.autocorrection(text.indexOf(QStringLiteral("recieve = 1")) + 7).isEmpty());
+        QVERIFY(backend.autocorrection(int(text.length())).isEmpty());
+        Q_UNUSED(fix);
+
+        QCOMPARE(backend.wordAt(QStringLiteral("it's here"), 2).value(QStringLiteral("word")).toString(),
+                 QStringLiteral("it's"));
+        backend.setAutocorrectEnabled(false);
     }
 
     void remembersThemeAndWrap() {

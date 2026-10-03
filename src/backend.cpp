@@ -35,6 +35,7 @@
 #include <cmath>
 
 #include "markdownhighlighter.h"
+#include "spellchecker.h"
 
 constexpr qreal typoraLineHeightPercent = 140;
 const QString lastSaveDirectorySetting = QStringLiteral("file/lastSaveDirectory");
@@ -43,6 +44,12 @@ const QString textZoomSetting = QStringLiteral("view/textZoom");
 const QString interfaceZoomSetting = QStringLiteral("view/interfaceZoom");
 const QString themeSetting = QStringLiteral("view/theme");
 const QString wrapModeSetting = QStringLiteral("view/wrap");
+const QString spellCheckSetting = QStringLiteral("spelling/check");
+const QString autocorrectSetting = QStringLiteral("spelling/autocorrect");
+
+bool isWordCharacter(QChar c) {
+    return c.isLetterOrNumber() || c == QLatin1Char('\'') || c == QChar(0x2019);
+}
 const QStringList wrapModes = {QStringLiteral("column"), QStringLiteral("window"),
                                QStringLiteral("off")};
 
@@ -110,6 +117,10 @@ Backend::Backend(QObject *parent) : QObject(parent) {
     m_theme = Themes::exists(savedTheme) ? savedTheme : Themes::defaultId();
     const QString savedWrap = QSettings().value(wrapModeSetting).toString();
     m_wrapMode = wrapModes.contains(savedWrap) ? savedWrap : wrapModes.constFirst();
+    m_spellChecker = std::make_unique<SpellChecker>();
+    m_spellCheckEnabled = QSettings().value(spellCheckSetting, true).toBool();
+    m_autocorrectEnabled = QSettings().value(autocorrectSetting,
+                                             SpellChecker::systemAutocorrectEnabled()).toBool();
 
     const QString stateDirectory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(stateDirectory);
@@ -245,6 +256,157 @@ void Backend::cycleWrapMode() {
                                        QStringLiteral("Wrap: window width"),
                                        QStringLiteral("Wrap: off")};
     setStatus(labels.at(next));
+}
+
+bool Backend::spellCheckAvailable() const {
+    return SpellChecker::available();
+}
+
+void Backend::setSpellCheckEnabled(bool enabled) {
+    if (enabled == m_spellCheckEnabled)
+        return;
+    m_spellCheckEnabled = enabled;
+    QSettings().setValue(spellCheckSetting, enabled);
+    emit spellCheckChanged();
+    emit spellingChanged();
+}
+
+void Backend::setAutocorrectEnabled(bool enabled) {
+    if (enabled == m_autocorrectEnabled)
+        return;
+    m_autocorrectEnabled = enabled;
+    QSettings().setValue(autocorrectSetting, enabled);
+    emit spellCheckChanged();
+}
+
+QVariantMap Backend::wordAt(const QString &text, int position) const {
+    int start = qBound(0, position, int(text.length()));
+    int end = start;
+    while (start > 0 && isWordCharacter(text.at(start - 1)))
+        --start;
+    while (end < text.length() && isWordCharacter(text.at(end)))
+        ++end;
+    // Apostrophes belong inside words, not around them.
+    while (start < end && !text.at(start).isLetterOrNumber())
+        ++start;
+    while (end > start && !text.at(end - 1).isLetterOrNumber())
+        --end;
+    return {{QStringLiteral("start"), start}, {QStringLiteral("end"), end},
+            {QStringLiteral("word"), text.mid(start, end - start)}};
+}
+
+bool Backend::isMisspelled(const QString &word) {
+    return m_spellCheckEnabled && !word.isEmpty() && m_spellChecker->isMisspelled(word);
+}
+
+QStringList Backend::spellingGuesses(const QString &word) {
+    return word.isEmpty() ? QStringList() : m_spellChecker->guesses(word).mid(0, 6);
+}
+
+void Backend::learnWord(const QString &word) {
+    m_spellChecker->learn(word);
+    emit spellingChanged();
+}
+
+void Backend::ignoreWord(const QString &word) {
+    m_spellChecker->ignore(word);
+    emit spellingChanged();
+}
+
+// Misspelled prose words in a document range (the visible part of the page),
+// for the editor to mark. The word under the caret is left alone while it is
+// still being typed.
+QVariantList Backend::misspellingsBetween(int start, int end) {
+    QVariantList ranges;
+    if (!m_document || !m_spellCheckEnabled || !SpellChecker::available())
+        return ranges;
+
+    for (QTextBlock block = m_document->findBlock(qMax(0, start));
+         block.isValid() && block.position() <= end; block = block.next()) {
+        if (MarkdownHighlighter::isVerbatimState(block.userState())
+                || block.previous().userState() == MarkdownHighlighter::MathState)
+            continue;
+        const QString line = block.text();
+        for (const SpellChecker::Range &range :
+                 m_spellChecker->misspellings(MarkdownHighlighter::proseText(line))) {
+            const int wordStart = block.position() + range.start;
+            const int wordEnd = wordStart + range.length;
+            if (m_caretPosition >= wordStart && m_caretPosition <= wordEnd)
+                continue;
+            ranges.append(QVariantMap{{QStringLiteral("start"), wordStart},
+                                      {QStringLiteral("end"), wordEnd}});
+        }
+    }
+    return ranges;
+}
+
+// Text replacements and autocorrection only touch prose: never code, math,
+// link targets or URLs.
+bool Backend::isProseAt(int position) const {
+    if (!m_document)
+        return false;
+    const QTextBlock block = m_document->findBlock(position);
+    if (!block.isValid() || MarkdownHighlighter::isVerbatimState(block.userState())
+            || block.previous().userState() == MarkdownHighlighter::MathState)
+        return false;
+
+    const QString line = block.text();
+    const int column = position - block.position();
+    for (const MarkdownHighlighter::VerbatimSpan &span : MarkdownHighlighter::verbatimSpans(line)) {
+        if (column > span.span.start && column <= span.span.start + span.span.length)
+            return false;
+    }
+    const int open = int(line.lastIndexOf(QStringLiteral("[["), qMax(0, column - 1)));
+    if (open >= 0) {
+        const int close = int(line.indexOf(QStringLiteral("]]"), open));
+        if (close < 0 || close + 2 > column)
+            return false;
+    }
+
+    int tokenStart = column;
+    while (tokenStart > 0 && !line.at(tokenStart - 1).isSpace())
+        --tokenStart;
+    const QString token = line.mid(tokenStart, column - tokenStart);
+    return !token.contains(QStringLiteral("://")) && !token.startsWith(QStringLiteral("www."))
+        && !token.contains(QLatin1Char('@')) && !token.contains(QStringLiteral("]("));
+}
+
+// What to change, if anything, about the word just finished at position:
+// the user's text replacements first, then the system's spelling correction.
+QVariantMap Backend::autocorrection(int position) {
+    if (!m_document || !SpellChecker::available() || !isProseAt(position))
+        return {};
+    const QString text = currentDocumentText();
+    if (position <= 0 || position > text.length())
+        return {};
+
+    int tokenStart = position;
+    while (tokenStart > 0 && !text.at(tokenStart - 1).isSpace())
+        --tokenStart;
+    const QString token = text.mid(tokenStart, position - tokenStart);
+    const QString replaced = m_spellChecker->replacement(token);
+    if (!replaced.isEmpty())
+        return {{QStringLiteral("start"), tokenStart}, {QStringLiteral("end"), position},
+                {QStringLiteral("replacement"), replaced}};
+
+    if (!m_spellCheckEnabled || !m_autocorrectEnabled)
+        return {};
+    const QVariantMap word = wordAt(text, position);
+    if (word.value(QStringLiteral("end")).toInt() != position)
+        return {};
+    const QString spelled = word.value(QStringLiteral("word")).toString();
+    if (spelled.length() < 2 || !m_spellChecker->isMisspelled(spelled))
+        return {};
+    const QString corrected = m_spellChecker->correction(spelled);
+    if (corrected.isEmpty() || corrected == spelled)
+        return {};
+    return {{QStringLiteral("start"), word.value(QStringLiteral("start"))},
+            {QStringLiteral("end"), position},
+            {QStringLiteral("replacement"), corrected}};
+}
+
+void Backend::lookUp(const QString &text, qreal x, qreal y, qreal pointSize) {
+    SpellChecker::lookUp(m_parentWindow, text, QPointF(x, y), pointSize);
 }
 
 // Zoom moves in 10% steps between 50% and 300%; zero steps only snaps a
