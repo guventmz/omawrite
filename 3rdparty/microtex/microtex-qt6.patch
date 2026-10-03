@@ -1,0 +1,73 @@
+diff --git a/microtex.pri b/microtex.pri
+index 159d6c3..5b4e9db 100644
+--- a/microtex.pri
++++ b/microtex.pri
+@@ -7,3 +7,4 @@ SOURCES += $$files($$MICROTEX_DIR/src/*.cpp, true) \
+            $$MICROTEX_DIR/tinyxml2/tinyxml2.cpp
+ HEADERS += $$files($$MICROTEX_DIR/src/*.h, true) \
+            $$MICROTEX_DIR/tinyxml2/tinyxml2.h
++RESOURCES += $$MICROTEX_DIR/microtex_fonts.qrc
+diff --git a/src/latex.cpp b/src/latex.cpp
+index 0dbb516..302dbbb 100644
+--- a/src/latex.cpp
++++ b/src/latex.cpp
+@@ -53,10 +53,7 @@ string LaTeX::queryResourceLocation(string& custom_path) {
+   // to potential paths.
+   char* home = getenv("HOME");
+   if (home != NULL && strcmp(home, "") != 0) {
+-    char* userdata_fallback;
+-    asprintf(&userdata_fallback, "%s/.local/share/clatexmath/", home);
+-    paths.push(string(userdata_fallback));
+-    delete userdata_fallback;
++    paths.push(string(home) + "/.local/share/clatexmath/");
+   }
+   paths.push("/usr/share/clatexmath/");
+   paths.push("/usr/local/share/clatexmath/");
+diff --git a/src/platform/qt/graphic_qt.cpp b/src/platform/qt/graphic_qt.cpp
+index 2d1a8a4..6773e44 100644
+--- a/src/platform/qt/graphic_qt.cpp
++++ b/src/platform/qt/graphic_qt.cpp
+@@ -44,7 +44,7 @@ Font_qt::Font_qt(const string& family, int style, float size) {
+ //  qInfo() << "new font" << QString::fromStdString(family) << style << size;
+ 
+   _font.setFamily(QString::fromStdString(family));
+-  _font.setPointSizeF(size);
++  _font.setPixelSize(qMax(1, qRound(size)));
+ 
+   _font.setBold(style & BOLD);
+   _font.setItalic(style & ITALIC);
+@@ -55,7 +55,7 @@ Font_qt::Font_qt(const string& file, float size)
+ //  qInfo() << "new font" << QString::fromStdString(file) << size;
+ 
+   // set size for newly loaded and previously loaded font
+-  _font.setPointSizeF(size);
++  _font.setPixelSize(qMax(1, qRound(size)));
+ 
+   QString filename(QString::fromStdString(file));
+   if(!QFile::exists(filename)) {
+@@ -72,14 +72,13 @@ Font_qt::Font_qt(const string& file, float size)
+     return;
+   }
+ 
+-  QFontDatabase db;
+-  int id = db.addApplicationFont(filename);
++  int id = QFontDatabase::addApplicationFont(filename);
+   if( id == -1 ) {
+ #ifdef HAVE_LOG
+     __log << file << " failed to load\n";
+ #endif
+   } else {
+-    QStringList families = db.applicationFontFamilies(id);
++    QStringList families = QFontDatabase::applicationFontFamilies(id);
+     if( families.size() > 0 ) {
+       _loaded_families[filename] = families.first();
+       _font.setFamily(families.first());
+@@ -107,7 +106,7 @@ QFont Font_qt::getQFont() const {
+ }
+ 
+ float Font_qt::getSize() const {
+-  return _font.pointSizeF();
++  return _font.pixelSize();
+ }
+ 
+ sptr<Font> Font_qt::deriveFont(int style) const {

@@ -15,6 +15,7 @@
 #include "backend.h"
 #include "systemtheme.h"
 #include "vault.h"
+#include "mathrenderer.h"
 
 namespace {
 // Finder hands documents to the app as FileOpen events rather than arguments,
@@ -85,6 +86,7 @@ int main(int argc, char *argv[]) {
     QObject::connect(&backend, &Backend::interfaceZoomChanged, &app, applyInterfaceFont);
 
     QQmlApplicationEngine engine;
+    engine.addImageProvider(QStringLiteral("math"), new MathImageProvider);
     QObject::connect(&engine, &QQmlApplicationEngine::warnings, &app,
                      [](const QList<QQmlError> &warnings) {
         for (const QQmlError &warning : warnings)

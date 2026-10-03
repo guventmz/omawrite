@@ -10,6 +10,7 @@
 #include "vault.h"
 #include "themes.h"
 #include "spellchecker.h"
+#include "mathrenderer.h"
 #include <QTextBlock>
 #include <QTextDocument>
 
@@ -458,6 +459,22 @@ private slots:
         QCOMPARE(backend.wordAt(QStringLiteral("it's here"), 2).value(QStringLiteral("word")).toString(),
                  QStringLiteral("it's"));
         backend.setAutocorrectEnabled(false);
+    }
+
+    void rendersMath() {
+        QString error;
+        const QImage matrix = MathImageProvider::render(
+            QStringLiteral("x=\\begin{bmatrix}x_1\\\\x_2\\end{bmatrix}"), 20, Qt::white, 2, &error);
+        QVERIFY2(!matrix.isNull(), qPrintable(error));
+        QVERIFY(matrix.width() > 80);
+        QVERIFY(matrix.height() > matrix.width() / 4);
+        QCOMPARE(matrix.devicePixelRatio(), 2.0);
+
+        QVERIFY(MathImageProvider::render(QStringLiteral("}"), 20, Qt::white, 1, &error).isNull());
+        QVERIFY(!error.isEmpty());
+        QVERIFY(MathImageProvider::render(QStringLiteral("\\newcommand{\\x}{\\x}\\x"), 20,
+                                          Qt::white, 1, &error).isNull());
+        QVERIFY(MathImageProvider::render(QStringLiteral("  "), 20, Qt::white, 1, &error).isNull());
     }
 
     void remembersThemeAndWrap() {

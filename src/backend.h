@@ -85,6 +85,7 @@ public:
     Q_INVOKABLE QVariantMap autocorrection(int position);
     Q_INVOKABLE void setCaretPosition(int position) { m_caretPosition = position; }
     Q_INVOKABLE QVariantList misspellingsBetween(int start, int end);
+    Q_INVOKABLE QVariantMap mathAt(int position) const;
     Q_INVOKABLE void lookUp(const QString &text, qreal x, qreal y, qreal pointSize);
     QString editorFont() const { return m_editorFont; }
     void setEditorFont(const QString &family);

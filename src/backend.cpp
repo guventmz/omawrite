@@ -409,6 +409,15 @@ void Backend::lookUp(const QString &text, qreal x, qreal y, qreal pointSize) {
     SpellChecker::lookUp(m_parentWindow, text, QPointF(x, y), pointSize);
 }
 
+QVariantMap Backend::mathAt(int position) const {
+    const MarkdownHighlighter::MathSource math =
+        MarkdownHighlighter::mathAt(currentDocumentText(), position);
+    if (math.latex.isEmpty())
+        return {};
+    return {{QStringLiteral("latex"), math.latex}, {QStringLiteral("start"), math.start},
+            {QStringLiteral("end"), math.end}, {QStringLiteral("display"), math.display}};
+}
+
 // Zoom moves in 10% steps between 50% and 300%; zero steps only snaps a
 // stored value back onto that grid.
 qreal Backend::steppedZoom(qreal zoom, int steps) {
