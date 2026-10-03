@@ -48,6 +48,18 @@ public:
     Q_INVOKABLE QString relativePath(const QUrl &url) const;
     Q_INVOKABLE QUrl urlFor(const QString &relativePath) const;
 
+    // Images live as files in the vault (assets/ by default) and are found
+    // the way Obsidian finds them: relative to the note, then by file name
+    // anywhere in the vault.
+    Q_INVOKABLE QUrl resolveImage(const QString &target, const QUrl &noteUrl);
+    Q_INVOKABLE QString imageAt(const QString &text, int position) const;
+    Q_INVOKABLE QVariantMap imageOnLine(const QString &text, int position) const;
+    Q_INVOKABLE bool clipboardHasImage() const;
+    Q_INVOKABLE QString pasteImage();
+    Q_INVOKABLE QString importImage(const QUrl &file);
+    Q_INVOKABLE static bool isImage(const QUrl &file);
+    QString attachmentsFolder();
+
     Q_INVOKABLE QString createNoteIn(const QString &folder);
     Q_INVOKABLE QString createFolder(const QString &parent);
     Q_INVOKABLE QVariantMap rename(const QString &path, const QString &newName);
@@ -59,6 +71,9 @@ public:
     static QStringList wikiLinkTargets(const QString &text);
     static QString renameLinks(const QString &text, const QStringList &oldTargets,
                                const QString &newTarget);
+    static QString renameImageLinks(const QString &text, const QString &oldName,
+                                    const QString &newName);
+    static QString imageTarget(const QString &reference);
 
 signals:
     void pathChanged();
@@ -86,6 +101,9 @@ private:
     void changed();
 
     QStringList m_expanded;
+    QHash<QString, QString> m_imagesByName;
+    bool m_imagesScanned = false;
+    void ensureImagesScanned();
 
     QString m_path;
     QList<Note> m_notes;

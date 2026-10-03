@@ -178,6 +178,10 @@ void MarkdownHighlighter::rebuildFormats() {
     m_mathFormat.setForeground(QColor(m_palette.math));
     m_mathFormat.setFontFamilies({codeFontFamily});
 
+    m_imageFormat = QTextCharFormat();
+    m_imageFormat.setForeground(marker);
+    m_imageFormat.setFontItalic(true);
+
     m_quoteFormat = QTextCharFormat();
     m_quoteFormat.setForeground(marker);
     m_quoteFormat.setFontItalic(true);
@@ -398,7 +402,8 @@ void MarkdownHighlighter::highlightInline(const QString &text) {
     };
 
     for (const VerbatimSpan &verbatim : verbatimSpans(text))
-        apply(verbatim.span, verbatim.math ? m_mathFormat : m_codeFormat);
+        apply(verbatim.span, verbatim.image ? m_imageFormat
+                             : verbatim.math ? m_mathFormat : m_codeFormat);
 
     const QList<InlineMarkup> markup = inlineMarkup(text);
     for (const InlineMarkup &item : markup) {
@@ -417,7 +422,8 @@ void MarkdownHighlighter::highlightInline(const QString &text) {
 
 QList<MarkdownHighlighter::VerbatimSpan> MarkdownHighlighter::verbatimSpans(const QString &text) {
     QList<VerbatimSpan> spans;
-    if (!text.contains(QLatin1Char('`')) && !text.contains(QLatin1Char('$')))
+    if (!text.contains(QLatin1Char('`')) && !text.contains(QLatin1Char('$'))
+            && !text.contains(QStringLiteral("![")))
         return spans;
 
     QString masked = text;
@@ -439,6 +445,17 @@ QList<MarkdownHighlighter::VerbatimSpan> MarkdownHighlighter::verbatimSpans(cons
     while (mathMatches.hasNext()) {
         const QRegularExpressionMatch match = mathMatches.next();
         spans.append({{int(match.capturedStart()), int(match.capturedLength())}, true});
+        for (int i = int(match.capturedStart()); i < match.capturedEnd(); ++i)
+            masked[i] = QLatin1Char(' ');
+    }
+
+    // ![[image.png]] and ![alt](image.png)
+    static const QRegularExpression imageRe(
+        QStringLiteral("!\\[\\[[^\\[\\]\\n]+?\\]\\]|!\\[[^\\]\\n]*\\]\\([^)\\n]+\\)"));
+    QRegularExpressionMatchIterator imageMatches = imageRe.globalMatch(masked);
+    while (imageMatches.hasNext()) {
+        const QRegularExpressionMatch match = imageMatches.next();
+        spans.append({{int(match.capturedStart()), int(match.capturedLength())}, false, true});
     }
 
     std::sort(spans.begin(), spans.end(), [](const VerbatimSpan &a, const VerbatimSpan &b) {

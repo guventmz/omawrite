@@ -36,6 +36,7 @@
 
 #include "markdownhighlighter.h"
 #include "preview.h"
+#include "vault.h"
 #include "spellchecker.h"
 
 constexpr qreal typoraLineHeightPercent = 140;
@@ -603,12 +604,28 @@ QUrl Backend::writePreview() {
         setStatus(QStringLiteral("Could not write the preview."));
         return {};
     }
-    file.write(Preview::html(currentDocumentText(), title, baseUrl, style).toUtf8());
+    const Preview::ImageResolver resolveImage = [this](const QString &target) {
+        return m_vault ? m_vault->resolveImage(target, m_fileUrl).toString(QUrl::FullyEncoded) : QString();
+    };
+    file.write(Preview::html(currentDocumentText(), title, baseUrl, style, resolveImage).toUtf8());
     if (!file.commit()) {
         setStatus(QStringLiteral("Could not write the preview."));
         return {};
     }
     return QUrl::fromLocalFile(path);
+}
+
+// Quick Look on macOS, the default viewer elsewhere.
+void Backend::openImage(const QUrl &image) {
+    if (!image.isLocalFile() || !QFileInfo::exists(image.toLocalFile())) {
+        setStatus(QStringLiteral("Image not found"));
+        return;
+    }
+#ifdef Q_OS_MACOS
+    QProcess::startDetached(QStringLiteral("/usr/bin/qlmanage"), {QStringLiteral("-p"), image.toLocalFile()});
+#else
+    QDesktopServices::openUrl(image);
+#endif
 }
 
 void Backend::previewInBrowser() {

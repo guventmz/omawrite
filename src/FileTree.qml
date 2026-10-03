@@ -123,6 +123,8 @@ FocusScope {
         list.currentIndex = index;
         if (row.folder)
             vault.setExpanded(row.path, !row.expanded);
+        else if (row.image)
+            backend.openImage(vault.urlFor(row.path));
         else
             noteChosen(vault.urlFor(row.path));
     }
@@ -483,7 +485,8 @@ FocusScope {
                       + (row.modelData.folder && tree.markTarget === row.modelData.path ? "  ← target" : "")
                       + (tree.searching && row.modelData.location ? "   " + row.modelData.location : "")
                 elide: Text.ElideRight
-                color: row.isCurrentNote ? tree.highlightColor : tree.textColor
+                color: row.isCurrentNote ? tree.highlightColor
+                     : row.modelData.image ? tree.mutedColor : tree.textColor
                 font.family: "IBM Plex Mono"
                 font.pixelSize: tree.scaledSize(13)
                 font.bold: row.modelData.folder

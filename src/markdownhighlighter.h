@@ -30,10 +30,12 @@ public:
         Span markers[2];
     };
 
-    // Inline `code` and $math$ are verbatim: no Markdown applies inside them.
+    // Inline `code`, $math$ and image embeds are verbatim: no Markdown
+    // applies inside them.
     struct VerbatimSpan {
         Span span;
         bool math;
+        bool image = false;
     };
 
     // Block states carried from line to line. Lines inside a fenced code block
@@ -74,6 +76,7 @@ private:
     QTextCharFormat m_codeFormat;
     QTextCharFormat m_fenceFormat;
     QTextCharFormat m_mathFormat;
+    QTextCharFormat m_imageFormat;
     QTextCharFormat m_keywordFormat;
     QTextCharFormat m_stringFormat;
     QTextCharFormat m_commentFormat;

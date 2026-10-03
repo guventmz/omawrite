@@ -5,6 +5,10 @@
 #include <QFile>
 #include <QFileInfo>
 #include <QRegularExpression>
+#include <QClipboard>
+#include <QGuiApplication>
+#include <QImage>
+#include <QMimeData>
 #include <QSaveFile>
 #include <QSettings>
 
@@ -17,6 +21,22 @@ const QString expandedSetting = QStringLiteral("vault/expanded");
 bool isNoteFile(const QString &name) {
     return name.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)
         || name.endsWith(QStringLiteral(".markdown"), Qt::CaseInsensitive);
+}
+
+const QStringList imageSuffixes = {
+    QStringLiteral("png"), QStringLiteral("jpg"), QStringLiteral("jpeg"), QStringLiteral("gif"),
+    QStringLiteral("svg"), QStringLiteral("webp"), QStringLiteral("bmp"), QStringLiteral("tiff"),
+    QStringLiteral("heic")};
+
+bool isImageFile(const QString &name) {
+    return imageSuffixes.contains(QFileInfo(name).suffix().toLower());
+}
+
+// ![[target]] / ![[target|300]] and ![alt](target), outside code.
+const QRegularExpression &imageRe() {
+    static const QRegularExpression re(
+        QStringLiteral("!\\[\\[([^\\[\\]\\n]+?)\\]\\]|!\\[[^\\]\\n]*\\]\\(([^)\\n]+)\\)"));
+    return re;
 }
 
 QString cleanName(QString name) {
@@ -101,6 +121,7 @@ bool Vault::contains(const QUrl &fileUrl) const {
 
 void Vault::refresh() {
     m_scanned = false;
+    m_imagesScanned = false;
     ensureScanned();
 }
 
@@ -420,17 +441,19 @@ void Vault::appendTree(const QString &folder, int depth, QVariantList *rows) con
         QDir::DirsFirst | QDir::Name | QDir::IgnoreCase);
     for (const QFileInfo &entry : entries) {
         const bool isFolder = entry.isDir();
-        if (!isFolder && !isNoteFile(entry.fileName()))
+        const bool image = !isFolder && isImageFile(entry.fileName());
+        if (!isFolder && !image && !isNoteFile(entry.fileName()))
             continue;
         const QString path = folder.isEmpty() ? entry.fileName()
                                               : folder + QLatin1Char('/') + entry.fileName();
         const bool expanded = isFolder && m_expanded.contains(path);
         rows->append(QVariantMap{
             {QStringLiteral("path"), path},
-            {QStringLiteral("name"), isFolder ? entry.fileName()
-                                              : withoutMarkdownSuffix(entry.fileName())},
+            {QStringLiteral("name"), isFolder || image ? entry.fileName()
+                                                       : withoutMarkdownSuffix(entry.fileName())},
             {QStringLiteral("depth"), depth},
             {QStringLiteral("folder"), isFolder},
+            {QStringLiteral("image"), image},
             {QStringLiteral("expanded"), expanded}});
         if (expanded)
             appendTree(path, depth + 1, rows);
@@ -558,7 +581,11 @@ QVariantMap Vault::rename(const QString &path, const QString &newName) {
         return {{QStringLiteral("error"), QStringLiteral("That name can't be used.")}};
 
     const bool isFolder = info.isDir();
-    const QString fileName = isFolder ? name : name + QStringLiteral(".md");
+    const bool image = !isFolder && isImageFile(info.fileName());
+    const QString imageName = image && QFileInfo(name).suffix().toLower() != info.suffix().toLower()
+        ? cleanName(newName) + QLatin1Char('.') + info.suffix()
+        : cleanName(newName);
+    const QString fileName = isFolder ? name : image ? imageName : name + QStringLiteral(".md");
     const QString parent = path.contains(QLatin1Char('/')) ? path.section(QLatin1Char('/'), 0, -2)
                                                           : QString();
     const QString newPath = parent.isEmpty() ? fileName : parent + QLatin1Char('/') + fileName;
@@ -581,7 +608,7 @@ QVariantMap Vault::rename(const QString &path, const QString &newName) {
     }
 
     // A note just created in the tree is empty; naming it gives it its heading.
-    if (!isFolder && info.size() == 0) {
+    if (!isFolder && !image && info.size() == 0) {
         QFile file(target);
         if (file.open(QIODevice::WriteOnly | QIODevice::Text))
             file.write(QStringLiteral("# %1\n\n").arg(name).toUtf8());
@@ -595,7 +622,8 @@ QVariantMap Vault::rename(const QString &path, const QString &newName) {
         QSettings().setValue(expandedSetting, m_expanded);
     }
 
-    // Notes are linked by title, so a renamed note takes its links along.
+    // Notes are linked by title and images by file name, so renaming either
+    // takes the references to it along.
     int updated = 0;
     if (!isFolder) {
         refresh();
@@ -609,7 +637,8 @@ QVariantMap Vault::rename(const QString &path, const QString &newName) {
             file.close();
             if (!text.contains(QStringLiteral("[[")))
                 continue;
-            const QString renamed = renameLinks(text, oldTargets, name);
+            const QString renamed = image ? renameImageLinks(text, info.fileName(), fileName)
+                                          : renameLinks(text, oldTargets, name);
             if (renamed == text)
                 continue;
             QSaveFile save(note.path);
@@ -670,9 +699,11 @@ QVariantList Vault::findEntries(const QString &query, int limit) {
         const QFileInfo info = it.nextFileInfo();
         const QString path = root.relativeFilePath(info.filePath());
         if (path.startsWith(QLatin1Char('.')) || path.contains(QStringLiteral("/."))
-                || (!info.isDir() && !isNoteFile(info.fileName())))
+                || (!info.isDir() && !isNoteFile(info.fileName()) && !isImageFile(info.fileName())))
             continue;
-        const QString name = info.isDir() ? info.fileName() : withoutMarkdownSuffix(info.fileName());
+        const bool image = !info.isDir() && isImageFile(info.fileName());
+        const QString name = info.isDir() || image ? info.fileName()
+                                                   : withoutMarkdownSuffix(info.fileName());
         const int score = qMax(fuzzyScore(trimmed, name), fuzzyScore(trimmed, path) - 10);
         if (score < 0)
             continue;
@@ -682,6 +713,7 @@ QVariantList Vault::findEntries(const QString &query, int limit) {
                                           {QStringLiteral("name"), name},
                                           {QStringLiteral("depth"), 0},
                                           {QStringLiteral("folder"), info.isDir()},
+                                          {QStringLiteral("image"), image},
                                           {QStringLiteral("expanded"), false},
                                           {QStringLiteral("location"), location}}});
     }
@@ -698,4 +730,172 @@ QVariantList Vault::findEntries(const QString &query, int limit) {
 
 void Vault::revealPath(const QString &path) {
     reveal(urlFor(path));
+}
+
+void Vault::ensureImagesScanned() {
+    if (m_imagesScanned)
+        return;
+    m_imagesScanned = true;
+    m_imagesByName.clear();
+    if (!ready())
+        return;
+    QDirIterator it(m_path, QDir::Files, QDirIterator::Subdirectories);
+    const QDir root(m_path);
+    while (it.hasNext()) {
+        const QFileInfo info = it.nextFileInfo();
+        const QString relative = root.relativeFilePath(info.filePath());
+        if (!isImageFile(info.fileName()) || relative.startsWith(QLatin1Char('.'))
+                || relative.contains(QStringLiteral("/.")))
+            continue;
+        const QString key = info.fileName().toLower();
+        // Prefer the attachments folder, then the shortest path.
+        const QString existing = m_imagesByName.value(key);
+        const bool inAssets = relative.startsWith(QStringLiteral("assets/"));
+        if (existing.isEmpty() || (inAssets && !existing.contains(QStringLiteral("/assets/")))
+                || (!inAssets == !existing.contains(QStringLiteral("/assets/"))
+                    && info.filePath().length() < existing.length()))
+            m_imagesByName.insert(key, info.filePath());
+    }
+}
+
+// The file an image reference points at: [[name|300]] loses its size, and
+// %20-style escapes in Markdown links are undone.
+QString Vault::imageTarget(const QString &reference) {
+    QString target = reference.section(QLatin1Char('|'), 0, 0).section(QLatin1Char('#'), 0, 0).trimmed();
+    if (target.startsWith(QLatin1Char('<')) && target.endsWith(QLatin1Char('>')))
+        target = target.mid(1, target.length() - 2);
+    // A Markdown link may carry a title: ![alt](file.png "Title").
+    static const QRegularExpression titleRe(QStringLiteral("\\s+\"[^\"]*\"$"));
+    target.remove(titleRe);
+    return QUrl::fromPercentEncoding(target.toUtf8());
+}
+
+QUrl Vault::resolveImage(const QString &target, const QUrl &noteUrl) {
+    const QString name = imageTarget(target);
+    if (name.isEmpty())
+        return {};
+    if (name.startsWith(QStringLiteral("http://")) || name.startsWith(QStringLiteral("https://")))
+        return QUrl(name);
+    if (name.startsWith(QStringLiteral("file://")))
+        return QUrl(name);
+
+    QStringList candidates;
+    if (QFileInfo(name).isAbsolute())
+        candidates.append(name);
+    if (noteUrl.isLocalFile())
+        candidates.append(QFileInfo(noteUrl.toLocalFile()).dir().filePath(name));
+    if (ready())
+        candidates.append(QDir(m_path).filePath(name));
+    for (const QString &candidate : std::as_const(candidates)) {
+        if (QFileInfo(candidate).isFile())
+            return QUrl::fromLocalFile(QDir::cleanPath(candidate));
+    }
+
+    ensureImagesScanned();
+    const QString found = m_imagesByName.value(QFileInfo(name).fileName().toLower());
+    return found.isEmpty() ? QUrl() : QUrl::fromLocalFile(found);
+}
+
+QString Vault::imageAt(const QString &text, int position) const {
+    const int lineStart = int(text.lastIndexOf(QLatin1Char('\n'), qMax(0, position - 1))) + 1;
+    int lineEnd = int(text.indexOf(QLatin1Char('\n'), position));
+    if (lineEnd < 0)
+        lineEnd = int(text.length());
+    const QString line = text.mid(lineStart, lineEnd - lineStart);
+    QRegularExpressionMatchIterator matches = imageRe().globalMatch(line);
+    while (matches.hasNext()) {
+        const QRegularExpressionMatch match = matches.next();
+        if (position - lineStart >= match.capturedStart() && position - lineStart <= match.capturedEnd())
+            return match.capturedStart(1) >= 0 ? match.captured(1) : match.captured(2);
+    }
+    return {};
+}
+
+// The first image on the caret's line, and where that line ends.
+QVariantMap Vault::imageOnLine(const QString &text, int position) const {
+    const int lineStart = int(text.lastIndexOf(QLatin1Char('\n'), qMax(0, position - 1))) + 1;
+    int lineEnd = int(text.indexOf(QLatin1Char('\n'), position));
+    if (lineEnd < 0)
+        lineEnd = int(text.length());
+    const QRegularExpressionMatch match = imageRe().match(text.mid(lineStart, lineEnd - lineStart));
+    if (!match.hasMatch())
+        return {};
+    return {{QStringLiteral("target"), match.capturedStart(1) >= 0 ? match.captured(1) : match.captured(2)},
+            {QStringLiteral("lineEnd"), lineEnd}};
+}
+
+bool Vault::isImage(const QUrl &file) {
+    return file.isLocalFile() && isImageFile(file.toLocalFile());
+}
+
+// assets/ at the vault root, where pasted and dropped images go.
+QString Vault::attachmentsFolder() {
+    if (!ready())
+        return {};
+    const QString folder = QDir(m_path).filePath(QStringLiteral("assets"));
+    QDir().mkpath(folder);
+    return folder;
+}
+
+bool Vault::clipboardHasImage() const {
+    const QMimeData *data = QGuiApplication::clipboard()->mimeData();
+    return data && data->hasImage() && !data->hasText();
+}
+
+// Saves the clipboard's image into assets/ the way Obsidian names it and
+// returns the file name for an ![[...]] embed, or nothing.
+QString Vault::pasteImage() {
+    const QString folder = attachmentsFolder();
+    const QImage image = qvariant_cast<QImage>(QGuiApplication::clipboard()->mimeData()->imageData());
+    if (folder.isEmpty() || image.isNull())
+        return {};
+    const QString base = QStringLiteral("Pasted image %1")
+                             .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyyMMddHHmmss")));
+    const QString fileName = uniqueName(QStringLiteral("assets"), base, QStringLiteral(".png"));
+    if (!image.save(QDir(folder).filePath(fileName), "PNG"))
+        return {};
+    m_imagesScanned = false;
+    emit treeChanged();
+    return fileName;
+}
+
+// A dropped image already in the vault is linked where it is; anything else
+// is copied into assets/ first. Returns the name to embed.
+QString Vault::importImage(const QUrl &file) {
+    if (!isImage(file))
+        return {};
+    const QString source = QDir::cleanPath(file.toLocalFile());
+    if (contains(file))
+        return QFileInfo(source).fileName();
+    const QString folder = attachmentsFolder();
+    if (folder.isEmpty())
+        return {};
+    const QFileInfo info(source);
+    const QString fileName = uniqueName(QStringLiteral("assets"), info.completeBaseName(),
+                                        QLatin1Char('.') + info.suffix());
+    if (!QFile::copy(source, QDir(folder).filePath(fileName)))
+        return {};
+    m_imagesScanned = false;
+    emit treeChanged();
+    return fileName;
+}
+
+// ![[old.png]], ![[old.png|300]] and ![alt](old.png) or (assets/old.png),
+// written plainly or %20-escaped, follow a renamed image.
+QString Vault::renameImageLinks(const QString &text, const QString &oldName, const QString &newName) {
+    QString result = text;
+    const QRegularExpression embedRe(
+        QStringLiteral("(\\[\\[\\s*(?:[^\\]|#\\n]*/)?)%1(\\s*(?:[|#][^\\]\\n]*)?\\]\\])")
+            .arg(QRegularExpression::escape(oldName)),
+        QRegularExpression::CaseInsensitiveOption);
+    result.replace(embedRe, QStringLiteral("\\1%1\\2").arg(newName));
+    const QString encodedOld = QString::fromUtf8(QUrl::toPercentEncoding(oldName));
+    const QString encodedNew = QString::fromUtf8(QUrl::toPercentEncoding(newName));
+    for (const auto &[from, to] : {std::pair{oldName, newName}, std::pair{encodedOld, encodedNew}}) {
+        const QRegularExpression linkRe(
+            QStringLiteral("(\\]\\(<?(?:[^)\\s]*/)?)%1(>?(?:\\s+\"[^\"]*\")?\\))").arg(QRegularExpression::escape(from)),
+            QRegularExpression::CaseInsensitiveOption);
+        result.replace(linkRe, QStringLiteral("\\1%1\\2").arg(to));
+    }
+    return result;
 }

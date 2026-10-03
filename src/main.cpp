@@ -91,6 +91,7 @@ int main(int argc, char *argv[]) {
             qWarning().noquote() << warning.toString();
     });
     Vault vault(&app);
+    backend.setVault(&vault);
     engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
     engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
 

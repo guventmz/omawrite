@@ -18,6 +18,7 @@ class QTextDocument;
 class QWindow;
 class QLockFile;
 class SpellChecker;
+class Vault;
 
 class Backend : public QObject {
     Q_OBJECT
@@ -111,6 +112,8 @@ public:
     Q_INVOKABLE void keepExternalVersion();
     Q_INVOKABLE void printDocument();
     Q_INVOKABLE void previewInBrowser();
+    Q_INVOKABLE void openImage(const QUrl &image);
+    void setVault(Vault *vault) { m_vault = vault; }
     QUrl writePreview();
     Q_INVOKABLE void fileMoved(const QUrl &from, const QUrl &to);
     Q_INVOKABLE void closeDocument();
@@ -213,6 +216,7 @@ private:
     bool m_spellCheckEnabled = true;
     bool m_autocorrectEnabled = false;
     int m_caretPosition = -1;
+    Vault *m_vault = nullptr;
     bool m_vimMode = false;
     bool isProseAt(int position) const;
     QString m_editorFont;

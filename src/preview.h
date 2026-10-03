@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QString>
+#include <functional>
 #include <QUrl>
 
 #include "themes.h"
@@ -16,6 +17,9 @@ struct Style {
     int fontPixels = 20;
 };
 
+// Turns an image reference into the URL the page loads it from.
+using ImageResolver = std::function<QString(const QString &target)>;
+
 QString html(const QString &markdown, const QString &title, const QUrl &baseUrl,
-             const Style &style);
+             const Style &style, const ImageResolver &resolveImage = {});
 }

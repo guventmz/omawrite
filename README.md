@@ -42,6 +42,18 @@ vim's Ctrl keys are the Control key, so `⌘` shortcuts keep working alongside i
 Moving to another note saves the one you leave, so following links never stops to ask.
 Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 
+## Images
+
+Images stay files in the vault, in `assets/` at its root. Pasting an image (`Cmd+V` with a
+screenshot on the clipboard) or dragging image files onto a note saves them there and embeds
+them as `![[Pasted image 20261003153012.png]]`, as Obsidian does. Both `![[name.png]]` and
+`![alt](name.png)` are found relative to the note first, then by file name anywhere in the
+vault, so moving notes or images never breaks them.
+
+With the cursor on a line holding an image, a thumbnail floats under it; `Cmd+Enter` or
+`Cmd`-click opens the image in Quick Look. Images show in the file tree too, where renaming
+one rewrites the notes that embed it. The browser preview renders them in place.
+
 ## Look and layout
 
 - `Ctrl+Alt+T` (or the half-circle button in the footer) picks a theme: Omawrite, Paper, Nord,

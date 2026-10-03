@@ -13,6 +13,7 @@
 #include "preview.h"
 #include <QTextBlock>
 #include <QTextDocument>
+#include <QImage>
 
 class OmawriteTest : public QObject {
     Q_OBJECT
@@ -658,10 +659,11 @@ QtObject {
             }
             return rows;
         };
-        QCOMPARE(names(), QStringList({QStringLiteral("books"), QStringLiteral("Index")}));
+        QCOMPARE(names(), QStringList({QStringLiteral("books"), QStringLiteral("cover.png"),
+                                       QStringLiteral("Index")}));
         vault.setExpanded(QStringLiteral("books"), true);
         QCOMPARE(names(), QStringList({QStringLiteral("books"), QStringLiteral("  Deep Work"),
-                                       QStringLiteral("Index")}));
+                                       QStringLiteral("cover.png"), QStringLiteral("Index")}));
 
         const QVariantMap renamed = vault.rename(QStringLiteral("books/Deep Work.md"), QStringLiteral("Focus"));
         QCOMPARE(renamed.value(QStringLiteral("path")).toString(), QStringLiteral("books/Focus.md"));
@@ -686,6 +688,75 @@ QtObject {
                     .contains(QStringLiteral("path")));
         QVERIFY(vault.findFolders(QStringLiteral("nf")).constFirst().toMap()
                     .value(QStringLiteral("path")).toString() == created);
+    }
+
+    void handlesImages() {
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        QDir root(folder.path());
+        root.mkpath(QStringLiteral("assets"));
+        root.mkpath(QStringLiteral("notes/deep"));
+        QImage pixel(4, 4, QImage::Format_ARGB32);
+        pixel.fill(Qt::red);
+        QVERIFY(pixel.save(folder.filePath(QStringLiteral("assets/Pasted image 20240423.png"))));
+        QVERIFY(pixel.save(folder.filePath(QStringLiteral("notes/deep/local.png"))));
+        const auto write = [&folder](const QString &name, const QString &text) {
+            QFile file(folder.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(text.toUtf8());
+        };
+        write(QStringLiteral("notes/deep/Note.md"),
+              QStringLiteral("![[Pasted image 20240423.png|300]]\n![x](pasted%20image%2020240423.png)\n![y](local.png)\n"));
+
+        Vault vault;
+        vault.setPath(folder.path());
+        const QUrl note = QUrl::fromLocalFile(folder.filePath(QStringLiteral("notes/deep/Note.md")));
+        const QUrl asset = QUrl::fromLocalFile(folder.filePath(QStringLiteral("assets/Pasted image 20240423.png")));
+        QCOMPARE(vault.resolveImage(QStringLiteral("Pasted image 20240423.png|300"), note), asset);
+        QCOMPARE(vault.resolveImage(QStringLiteral("pasted%20image%2020240423.png"), note), asset);
+        QCOMPARE(vault.resolveImage(QStringLiteral("local.png"), note),
+                 QUrl::fromLocalFile(folder.filePath(QStringLiteral("notes/deep/local.png"))));
+        QVERIFY(vault.resolveImage(QStringLiteral("missing.png"), note).isEmpty());
+
+        const QString text = QStringLiteral("before ![[a b.png|200]] after");
+        QCOMPARE(vault.imageAt(text, 10), QStringLiteral("a b.png|200"));
+        QVERIFY(vault.imageAt(text, 2).isEmpty());
+        QCOMPARE(vault.imageOnLine(text, 2).value(QStringLiteral("target")).toString(), QStringLiteral("a b.png|200"));
+
+        QCOMPARE(Vault::renameImageLinks(
+                     QStringLiteral("![[Old.png]] ![[old.png|300]] ![a](Old.png) ![b](assets/Old.png) ![c](My%20Old.png) [[Old]]"),
+                     QStringLiteral("Old.png"), QStringLiteral("New.png")),
+                 QStringLiteral("![[New.png]] ![[New.png|300]] ![a](New.png) ![b](assets/New.png) ![c](My%20Old.png) [[Old]]"));
+
+        const QVariantMap renamed = vault.rename(QStringLiteral("assets/Pasted image 20240423.png"), QStringLiteral("diagram"));
+        QCOMPARE(renamed.value(QStringLiteral("path")).toString(), QStringLiteral("assets/diagram.png"));
+        QCOMPARE(renamed.value(QStringLiteral("updatedNotes")).toInt(), 1);
+        QFile updated(note.toLocalFile());
+        QVERIFY(updated.open(QIODevice::ReadOnly));
+        QCOMPARE(updated.readAll(), QByteArray("![[diagram.png|300]]\n![x](diagram.png)\n![y](local.png)\n"));
+
+        QTemporaryDir outside;
+        QVERIFY(pixel.save(outside.filePath(QStringLiteral("shot.png"))));
+        QCOMPARE(vault.importImage(QUrl::fromLocalFile(outside.filePath(QStringLiteral("shot.png")))), QStringLiteral("shot.png"));
+        QVERIFY(QFileInfo::exists(folder.filePath(QStringLiteral("assets/shot.png"))));
+        QCOMPARE(vault.importImage(QUrl::fromLocalFile(outside.filePath(QStringLiteral("shot.png")))), QStringLiteral("shot 2.png"));
+        QCOMPARE(vault.importImage(QUrl::fromLocalFile(folder.filePath(QStringLiteral("notes/deep/local.png")))),
+                 QStringLiteral("local.png"));
+
+        const auto spans = MarkdownHighlighter::verbatimSpans(QStringLiteral("see ![[x.png]] and ![a_b](y_z.png) `![[c]]`"));
+        QCOMPARE(spans.size(), 3);
+        QVERIFY(spans.at(0).image);
+        QVERIFY(spans.at(1).image);
+        QVERIFY(!spans.at(2).image);
+        QVERIFY(MarkdownHighlighter::inlineMarkup(QStringLiteral("![a_b](y_z.png) ![[x]]")).isEmpty());
+
+        Preview::Style style{Themes::palette(Themes::defaultId(), true), true, QStringLiteral("IBM Plex Mono"), 20};
+        const QString page = Preview::html(QStringLiteral("![[diagram.png|300]] ![[gone.png]]"), QStringLiteral("t"), QUrl(), style,
+                                           [&vault, note](const QString &target) {
+                                               return vault.resolveImage(target, note).toString(QUrl::FullyEncoded);
+                                           });
+        QVERIFY(page.contains(QStringLiteral("![diagram.png](<file://")));
+        QVERIFY(page.contains(QStringLiteral("missing\\\">gone.png")));
     }
 
     void navigatesAVault() {

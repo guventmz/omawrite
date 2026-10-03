@@ -27,7 +27,8 @@ QString mathToken(int index) {
 // marked would read the _ and \ inside math as Markdown, so every formula is
 // swapped for a token first and rendered with KaTeX afterwards. Code blocks
 // and inline code are left alone, using the same rules as the editor.
-QString protectMath(const QString &markdown, QJsonArray *math) {
+QString protectMath(const QString &markdown, QJsonArray *math,
+                    const Preview::ImageResolver &resolveImage) {
     static const QRegularExpression fenceRe(QStringLiteral("^\\s{0,3}(```|~~~)"));
     static const QRegularExpression wikiLinkRe(
         QStringLiteral("\\[\\[([^\\[\\]\\n|]+?)(?:\\|([^\\[\\]\\n]+?))?\\]\\]"));
@@ -77,9 +78,27 @@ QString protectMath(const QString &markdown, QJsonArray *math) {
         QList<Replacement> replacements;
         const QList<MarkdownHighlighter::VerbatimSpan> verbatim = MarkdownHighlighter::verbatimSpans(line);
         for (const MarkdownHighlighter::VerbatimSpan &span : verbatim) {
+            const QString source = line.mid(span.span.start, span.span.length);
+            if (span.image) {
+                // ![[name|300]] and ![alt](name) both become a plain image
+                // pointing at the file the vault resolves.
+                const bool embed = source.startsWith(QStringLiteral("![["));
+                const QString target = embed ? source.mid(3, source.length() - 5)
+                                             : source.section(QStringLiteral("]("), 1).chopped(1);
+                const QString alt = embed ? target.section(QLatin1Char('|'), 0, 0).trimmed()
+                                          : source.mid(2, source.indexOf(QStringLiteral("](")) - 2);
+                const QString url = resolveImage ? resolveImage(target) : QString();
+                if (!url.isEmpty())
+                    replacements.append({span.span.start, span.span.length,
+                                         QStringLiteral("![%1](<%2>)").arg(alt, url)});
+                else if (embed)
+                    replacements.append({span.span.start, span.span.length,
+                                         QStringLiteral("<span class=\"missing\">%1</span>")
+                                             .arg(alt.toHtmlEscaped())});
+                continue;
+            }
             if (!span.math)
                 continue;
-            const QString source = line.mid(span.span.start, span.span.length);
             const bool display = source.startsWith(QStringLiteral("$$"));
             const int marker = display ? 2 : 1;
             replacements.append({span.span.start, span.span.length,
@@ -156,7 +175,9 @@ blockquote { margin: 1em 0; padding-left: 1em; border-left: 3px solid %9; color:
 hr { border: none; border-top: 1px solid %9; margin: 2em 0; }
 table { border-collapse: collapse; }
 th, td { border: 1px solid %9; padding: 0.3em 0.6em; }
-img { max-width: 100%; }
+img { max-width: 100%; border-radius: 4px; }
+.missing { color: %9; font-style: italic; }
+.missing::before { content: "missing image: "; }
 ::selection { background: %10; }
 .katex { font-size: 1.1em; }
 .katex-display { overflow-x: auto; overflow-y: hidden; }
@@ -198,9 +219,9 @@ const char *renderScript = R"(
 }
 
 QString Preview::html(const QString &markdown, const QString &title, const QUrl &baseUrl,
-                      const Style &style) {
+                      const Style &style, const ImageResolver &resolveImage) {
     QJsonArray math;
-    const QString protectedMarkdown = protectMath(markdown, &math);
+    const QString protectedMarkdown = protectMath(markdown, &math, resolveImage);
     const QJsonObject note{{QStringLiteral("markdown"), protectedMarkdown},
                            {QStringLiteral("source"), markdown},
                            {QStringLiteral("math"), math}};

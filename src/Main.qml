@@ -206,6 +206,11 @@ ApplicationWindow {
     }
 
     function followLinkAt(position) {
+        var image = vault.imageAt(editor.text, position);
+        if (image !== "") {
+            backend.openImage(vault.resolveImage(image, backend.fileUrl));
+            return true;
+        }
         var target = vault.linkAt(editor.text, position);
         if (target === "")
             return false;
@@ -327,6 +332,23 @@ ApplicationWindow {
         if (rect.y + rect.height > bottom)
             return editor.positionAt(rect.x, bottom - lineHeight / 2);
         return -1;
+    }
+
+    // A copied image (say, a screenshot) lands in the vault's assets/ folder
+    // and is embedded the way Obsidian does it.
+    function pasteImage() {
+        if (!vault.clipboardHasImage())
+            return false;
+        if (!vault.ready) {
+            backend.showStatus("Choose a vault folder to paste images into");
+            return true;
+        }
+        var name = vault.pasteImage();
+        if (name === "")
+            backend.showStatus("Could not save the pasted image");
+        else
+            editor.replaceSelectionWith("![[" + name + "]]");
+        return true;
     }
 
     function refreshBacklinkCount() {
@@ -869,7 +891,7 @@ ApplicationWindow {
         MenuItem {
             text: "Paste"
             onTriggered: {
-                if (!editor.pasteClipboardUrlAsMarkdownLink())
+                if (!win.pasteImage() && !editor.pasteClipboardUrlAsMarkdownLink())
                     editor.pasteClipboardAsPlainText();
             }
         }
@@ -1300,6 +1322,7 @@ FileTree {
                 onCursorPositionChanged: {
                     backend.setCaretPosition(cursorPosition);
                     spellingRefresh.restart();
+                    imageLookup.restart();
                 }
                 onFontChanged: {
                     backend.documentFontChanged();
@@ -1486,7 +1509,7 @@ FileTree {
                         && (event.modifiers & Qt.ShiftModifier)
                         && !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier));
                     if (pasteKey || shiftInsert) {
-                        if (!pasteClipboardUrlAsMarkdownLink())
+                        if (!win.pasteImage() && !pasteClipboardUrlAsMarkdownLink())
                             pasteClipboardAsPlainText();
                         event.accepted = true;
                         return;
@@ -1527,11 +1550,101 @@ FileTree {
 
                 onTextChanged: {
                     spellingRefresh.restart();
+                    imageLookup.restart();
                     if (win.searchUpdating)
                         return;
                     var contentChanged = backend.editorTextChanged();
                     if (win.searchOpen && contentChanged)
                         win.updateSearch();
+                }
+
+                // Dropped image files are copied into assets/ (or linked where
+                // they are when already in the vault) and embedded at the drop.
+                DropArea {
+                    anchors.fill: parent
+                    keys: ["text/uri-list"]
+                    onEntered: function(drag) {
+                        drag.accepted = drag.hasUrls && drag.urls.some(function(url) { return vault.isImage(url); });
+                    }
+                    onDropped: function(drop) {
+                        if (!vault.ready) {
+                            backend.showStatus("Choose a vault folder to add images to");
+                            return;
+                        }
+                        var embeds = [];
+                        for (var i = 0; i < drop.urls.length; ++i) {
+                            var name = vault.importImage(drop.urls[i]);
+                            if (name !== "")
+                                embeds.push("![[" + name + "]]");
+                        }
+                        if (embeds.length === 0)
+                            return;
+                        var position = editor.positionAt(drop.x, drop.y);
+                        EditorMutations.replaceRange(editor, position, position, embeds.join("\n"));
+                        drop.accept(Qt.CopyAction);
+                        editor.forceActiveFocus();
+                    }
+                }
+
+                Timer {
+                    id: imageLookup
+                    interval: 150
+                    onTriggered: {
+                        var hit = vault.imageOnLine(editor.text, editor.cursorPosition);
+                        imagePreview.target = hit.target === undefined ? "" : hit.target;
+                        imagePreview.lineEnd = hit.target === undefined ? -1 : hit.lineEnd;
+                        imagePreview.source = hit.target === undefined ? ""
+                            : vault.resolveImage(hit.target, backend.fileUrl);
+                    }
+                }
+
+                // A thumbnail of the image on the caret's line, floating under it.
+                Rectangle {
+                    id: imagePreview
+                    objectName: "imagePreview"
+
+                    property string target
+                    property url source
+                    property int lineEnd: -1
+                    readonly property rect below: lineEnd >= 0 ? editor.positionToRectangle(lineEnd)
+                                                               : Qt.rect(0, 0, 0, 0)
+                    readonly property bool ready: thumbnail.status === Image.Ready
+                    readonly property real scaleDown: ready
+                        ? Math.min(1, (editor.width - 16) / Math.max(1, thumbnail.implicitWidth),
+                                   win.scaledSize(240) / Math.max(1, thumbnail.implicitHeight))
+                        : 1
+
+                    visible: lineEnd >= 0 && editor.activeFocus && !win.searchOpen
+                    z: 5
+                    x: 0
+                    y: below.y + below.height + 6
+                    width: ready ? thumbnail.width + 16 : missingImage.implicitWidth + 24
+                    height: (ready ? thumbnail.height : missingImage.implicitHeight) + 16
+                    radius: 6
+                    color: win.surfaceColor
+                    border.width: 1
+                    border.color: Qt.rgba(0.5, 0.5, 0.5, 0.25)
+
+                    Image {
+                        id: thumbnail
+                        anchors.centerIn: parent
+                        source: imagePreview.source
+                        asynchronous: true
+                        smooth: true
+                        width: implicitWidth * imagePreview.scaleDown
+                        height: implicitHeight * imagePreview.scaleDown
+                    }
+
+                    Label {
+                        id: missingImage
+                        anchors.centerIn: parent
+                        visible: !imagePreview.ready
+                        text: thumbnail.status === Image.Loading ? "…"
+                            : "Image not found: " + imagePreview.target.split("|")[0]
+                        color: win.mutedColor
+                        font.family: "IBM Plex Mono"
+                        font.pixelSize: win.scaledSize(12)
+                    }
                 }
 
                 // Qt Quick ignores underline colors, so misspellings get the
