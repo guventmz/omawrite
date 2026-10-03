@@ -292,6 +292,51 @@ ApplicationWindow {
         forwardStack = forwardStack.filter(keep);
     }
 
+    readonly property var previewWindow: previewLoader.item
+    readonly property bool previewShown: previewWindow !== null && previewWindow.visible
+
+    // Shift+Cmd+P opens the preview window beside the editor, on whichever
+    // side has room, and closes it again.
+    function togglePreview() {
+        if (!backend.embeddedPreview) {
+            backend.previewInBrowser();
+            return;
+        }
+        if (previewShown) {
+            previewWindow.close();
+            return;
+        }
+        previewLoader.active = true;
+        var preview = previewWindow;
+        var screenLeft = win.screen.virtualX;
+        var screenRight = screenLeft + win.screen.width;
+        var spaceRight = screenRight - (win.x + win.width) - 8;
+        var spaceLeft = win.x - screenLeft - 8;
+        var minimum = scaledSize(420);
+        preview.width = Math.max(minimum, Math.min(scaledSize(900), Math.max(spaceRight, spaceLeft)));
+        preview.height = win.height;
+        preview.y = win.y;
+        if (spaceRight >= minimum)
+            preview.x = win.x + win.width + 8;
+        else if (spaceLeft >= minimum)
+            preview.x = win.x - preview.width - 8;
+        else
+            preview.x = screenRight - preview.width;
+        // The native web view only takes a page once its window is on screen.
+        preview.show();
+        Qt.callLater(function() {
+            win.refreshPreviewPage();
+            win.requestActivate();
+        });
+    }
+
+    function refreshPreviewPage() {
+        if (!previewWindow)
+            return;
+        previewWindow.noteTitle = backend.fileName.replace(/\.(md|markdown)$/i, "");
+        previewWindow.load(backend.previewHtml());
+    }
+
     function refreshBacklinkCount() {
         if (!vault.contains(backend.fileUrl)) {
             backlinkCount = 0;
@@ -499,7 +544,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+Shift+P"
         context: Qt.ApplicationShortcut
-        onActivated: backend.previewInBrowser()
+        onActivated: win.togglePreview()
     }
 
     Shortcut {
@@ -627,8 +672,9 @@ ApplicationWindow {
     }
 
     Shortcut {
+        // Window-scoped, so Cmd+W in the preview window closes only that.
         sequence: "Ctrl+W"
-        context: Qt.ApplicationShortcut
+        context: Qt.WindowShortcut
         enabled: win.macOS
         onActivated: win.close()
     }
@@ -688,6 +734,8 @@ ApplicationWindow {
 
         function onFileUrlChanged() {
             win.resetVim();
+            if (win.previewShown)
+                win.refreshPreviewPage();
             win.refreshBacklinkCount();
             spellingRefresh.restart();
         }
@@ -954,6 +1002,31 @@ FileTree {
                 onMessage: function(text) { backend.showStatus(text); }
                 onDone: fileTreePopup.close()
             }
+    }
+
+    Loader {
+        id: previewLoader
+        active: false
+        source: "PreviewWindow.qml"
+    }
+
+    // Live preview: new text is pushed into the open page shortly after
+    // typing stops; a new look (theme, font, size) reloads it.
+    Timer {
+        id: previewRefresh
+        interval: 300
+        onTriggered: {
+            if (win.previewShown)
+                win.previewWindow.render(backend.previewNoteJson());
+        }
+    }
+
+    Connections {
+        target: backend
+        enabled: win.previewShown
+        function onThemeColorsChanged() { win.refreshPreviewPage(); }
+        function onEditorFontChanged() { win.refreshPreviewPage(); }
+        function onTextZoomChanged() { win.refreshPreviewPage(); }
     }
 
     ShortcutSheet {
@@ -1492,6 +1565,8 @@ FileTree {
 
                 onTextChanged: {
                     spellingRefresh.restart();
+                    if (win.previewShown)
+                        previewRefresh.restart();
                     if (win.searchUpdating)
                         return;
                     var contentChanged = backend.editorTextChanged();
@@ -1620,8 +1695,8 @@ FileTree {
                 objectName: "previewButton"
                 iconName: "preview"
                 iconColor: win.mutedColor
-                tooltip: "Preview in Browser"
-                onClicked: backend.previewInBrowser()
+                tooltip: "Preview"
+                onClicked: win.togglePreview()
             }
 
             FooterIconButton {

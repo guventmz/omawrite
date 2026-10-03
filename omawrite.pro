@@ -7,6 +7,13 @@ TEMPLATE = app
 # The desktop portal (theme and text scale) is only reachable over D-Bus on Linux.
 !macx: QT += dbus
 
+# The preview window uses the platform's web view (WebKit on macOS); without
+# QtWebView the preview opens in the default browser instead.
+qtHaveModule(webview) {
+    QT += webview
+    DEFINES += HAVE_WEBVIEW
+}
+
 macx {
     TARGET = Omawrite
     ICON = macos/Omawrite.icns

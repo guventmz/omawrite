@@ -581,9 +581,19 @@ void Backend::printDocument() {
     }
 }
 
-// Writes the note as a themed HTML page and opens it in the default browser.
-// Each note keeps one page in the cache, so previewing again just refreshes it.
-void Backend::previewInBrowser() {
+QString Backend::previewHtml() const {
+    const QUrl baseUrl = m_fileUrl.isLocalFile()
+        ? QUrl::fromLocalFile(QFileInfo(m_fileUrl.toLocalFile()).absolutePath() + QLatin1Char('/'))
+        : QUrl();
+    const Preview::Style style{m_palette, m_darkMode, m_editorFont,
+                               qRound(20 * m_textScale * m_textZoom)};
+    return Preview::html(currentDocumentText(), QFileInfo(fileName()).completeBaseName(), baseUrl,
+                         style);
+}
+
+// Writes the note as a themed HTML page in the cache and returns its URL. Each
+// note keeps one page there, so writing again just refreshes it.
+QUrl Backend::writePreview() {
     const QString directory = QStandardPaths::writableLocation(QStandardPaths::CacheLocation)
         + QStringLiteral("/preview");
     QDir().mkpath(directory);
@@ -592,23 +602,38 @@ void Backend::previewInBrowser() {
         QString(title).replace(QRegularExpression(QStringLiteral("[^\\w .-]")), QStringLiteral("-"))
         + QStringLiteral(".html"));
 
-    const QUrl baseUrl = m_fileUrl.isLocalFile()
-        ? QUrl::fromLocalFile(QFileInfo(m_fileUrl.toLocalFile()).absolutePath() + QLatin1Char('/'))
-        : QUrl();
-    const Preview::Style style{m_palette, m_darkMode, m_editorFont,
-                               qRound(20 * m_textScale * m_textZoom)};
-
     QSaveFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         setStatus(QStringLiteral("Could not write the preview."));
-        return;
+        return {};
     }
-    file.write(Preview::html(currentDocumentText(), title, baseUrl, style).toUtf8());
+    file.write(previewHtml().toUtf8());
     if (!file.commit()) {
         setStatus(QStringLiteral("Could not write the preview."));
-        return;
+        return {};
     }
-    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+    return QUrl::fromLocalFile(path);
+}
+
+QString Backend::previewNoteJson() const {
+    return Preview::noteJson(currentDocumentText());
+}
+
+bool Backend::embeddedPreview() const {
+#ifdef HAVE_WEBVIEW
+    return true;
+#else
+    return false;
+#endif
+}
+
+// Without an embedded web view (say, Linux without QtWebView), the
+// preview opens in the default browser instead.
+void Backend::previewInBrowser() {
+    const QUrl page = writePreview();
+    if (page.isEmpty())
+        return;
+    QDesktopServices::openUrl(page);
     setStatus(QStringLiteral("Opened preview in browser"));
 }
 

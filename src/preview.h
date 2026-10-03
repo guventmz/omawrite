@@ -18,4 +18,7 @@ struct Style {
 
 QString html(const QString &markdown, const QString &title, const QUrl &baseUrl,
              const Style &style);
+
+// The note as the page's render function takes it, for live updates.
+QString noteJson(const QString &markdown);
 }

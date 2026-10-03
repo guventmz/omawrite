@@ -41,6 +41,7 @@ class Backend : public QObject {
     Q_PROPERTY(bool spellCheckEnabled READ spellCheckEnabled WRITE setSpellCheckEnabled NOTIFY spellCheckChanged)
     Q_PROPERTY(bool autocorrectEnabled READ autocorrectEnabled WRITE setAutocorrectEnabled NOTIFY spellCheckChanged)
     Q_PROPERTY(bool vimMode READ vimMode WRITE setVimMode NOTIFY vimModeChanged)
+    Q_PROPERTY(bool embeddedPreview READ embeddedPreview CONSTANT)
     Q_PROPERTY(QString editorFont READ editorFont WRITE setEditorFont NOTIFY editorFontChanged)
     Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
 
@@ -111,6 +112,10 @@ public:
     Q_INVOKABLE void keepExternalVersion();
     Q_INVOKABLE void printDocument();
     Q_INVOKABLE void previewInBrowser();
+    Q_INVOKABLE QUrl writePreview();
+    Q_INVOKABLE QString previewHtml() const;
+    Q_INVOKABLE QString previewNoteJson() const;
+    bool embeddedPreview() const;
     Q_INVOKABLE void fileMoved(const QUrl &from, const QUrl &to);
     Q_INVOKABLE void closeDocument();
     Q_INVOKABLE void showStatus(const QString &status) { setStatus(status); }
