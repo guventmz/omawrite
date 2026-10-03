@@ -42,6 +42,9 @@ ApplicationWindow {
     property string pendingAction: ""
     property bool replaceOpen: false
     property bool awaitingPendingSave: false
+    property var backStack: []
+    property var forwardStack: []
+    property int backlinkCount: 0
 
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
@@ -65,6 +68,123 @@ ApplicationWindow {
         pendingOpenUrl = url;
         pendingAction = "open";
         unsavedChangesDialog.open();
+    }
+
+    // Jumping between notes saves the one being left; only an untitled draft
+    // asks first, through the usual unsaved-changes dialog.
+    function saveBeforeLeaving(url) {
+        if (!backend.modified)
+            return true;
+        if (backend.fileUrl.toString() !== "") {
+            backend.save();
+            return !backend.modified;
+        }
+        requestOpen(url);
+        return false;
+    }
+
+    function navigateTo(url, line) {
+        if (url.toString() === "")
+            return;
+        if (url.toString() !== backend.fileUrl.toString()) {
+            if (!saveBeforeLeaving(url))
+                return;
+            var from = backend.fileUrl;
+            backend.open(url);
+            if (backend.fileUrl.toString() !== url.toString())
+                return;
+            if (from.toString() !== "") {
+                backStack = backStack.concat([from]);
+                forwardStack = [];
+            }
+        }
+        goToLine(line === undefined ? -1 : line);
+    }
+
+    // A fresh note opens with the caret under its heading, ready to write.
+    function openNewNote(url) {
+        navigateTo(url);
+        if (url.toString() !== "" && backend.fileUrl.toString() === url.toString())
+            editor.cursorPosition = editor.text.length;
+    }
+
+    function goBack() {
+        if (backStack.length === 0)
+            return;
+        var target = backStack[backStack.length - 1];
+        var from = backend.fileUrl;
+        if (!saveBeforeLeaving(target))
+            return;
+        backStack = backStack.slice(0, -1);
+        backend.open(target);
+        if (backend.fileUrl.toString() === target.toString() && from.toString() !== "")
+            forwardStack = forwardStack.concat([from]);
+    }
+
+    function goForward() {
+        if (forwardStack.length === 0)
+            return;
+        var target = forwardStack[forwardStack.length - 1];
+        var from = backend.fileUrl;
+        if (!saveBeforeLeaving(target))
+            return;
+        forwardStack = forwardStack.slice(0, -1);
+        backend.open(target);
+        if (backend.fileUrl.toString() === target.toString() && from.toString() !== "")
+            backStack = backStack.concat([from]);
+    }
+
+    function goToLine(line) {
+        var position = 0;
+        for (var i = 0; i < line; ++i) {
+            var next = editor.text.indexOf("\n", position);
+            if (next < 0)
+                break;
+            position = next + 1;
+        }
+        editor.cursorPosition = position;
+        editor.forceActiveFocus();
+        Qt.callLater(editorFlick.ensureCursorVisible);
+    }
+
+    function followLinkAt(position) {
+        var target = vault.linkAt(editor.text, position);
+        if (target === "")
+            return false;
+        if (!vault.ready) {
+            vaultFolderDialog.open();
+            return true;
+        }
+        var url = vault.resolveLink(target);
+        if (url.toString() === "")
+            openNewNote(vault.createNote(target));
+        else
+            navigateTo(url);
+        return true;
+    }
+
+    function openNotePicker(mode) {
+        if (mode === "backlinks" && !vault.contains(backend.fileUrl))
+            mode = "open";
+        notePicker.show(mode);
+    }
+
+    function insertLinkToNote(title) {
+        var position = editor.cursorPosition;
+        var closed = editor.text.slice(position, position + 2) === "]]";
+        EditorMutations.replaceRange(editor, position, position, closed ? title : title + "]]");
+        if (closed)
+            editor.cursorPosition = position + title.length + 2;
+        editor.forceActiveFocus();
+    }
+
+    function refreshBacklinkCount() {
+        if (!vault.contains(backend.fileUrl)) {
+            backlinkCount = 0;
+            return;
+        }
+        vault.refresh();
+        backlinkCount = vault.backlinkCount(backend.fileUrl);
     }
 
     function completePendingAction() {
@@ -202,9 +322,51 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+P"
+        sequence: "Ctrl+Shift+P"
         context: Qt.ApplicationShortcut
         onActivated: backend.printDocument()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+P"
+        context: Qt.ApplicationShortcut
+        onActivated: win.openNotePicker("open")
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+F"
+        context: Qt.ApplicationShortcut
+        onActivated: win.openNotePicker("text")
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+B"
+        context: Qt.ApplicationShortcut
+        onActivated: win.openNotePicker("backlinks")
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Shift+O"
+        context: Qt.ApplicationShortcut
+        onActivated: vaultFolderDialog.open()
+    }
+
+    Shortcut {
+        sequences: ["Ctrl+Return", "Ctrl+Enter"]
+        context: Qt.WindowShortcut
+        onActivated: win.followLinkAt(editor.cursorPosition)
+    }
+
+    Shortcut {
+        sequences: win.macOS ? ["Ctrl+["] : ["Ctrl+[", "Alt+Left"]
+        context: Qt.ApplicationShortcut
+        onActivated: win.goBack()
+    }
+
+    Shortcut {
+        sequences: win.macOS ? ["Ctrl+]"] : ["Ctrl+]", "Alt+Right"]
+        context: Qt.ApplicationShortcut
+        onActivated: win.goForward()
     }
 
     Shortcut {
@@ -275,7 +437,12 @@ ApplicationWindow {
             win.close();
         }
 
+        function onFileUrlChanged() {
+            win.refreshBacklinkCount();
+        }
+
         function onSaveSucceeded() {
+            win.refreshBacklinkCount();
             win.awaitingPendingSave = false;
             if (win.pendingAction !== "")
                 win.completePendingAction();
@@ -307,6 +474,37 @@ ApplicationWindow {
             win.awaitingPendingSave = false;
             win.pendingAction = "";
         }
+    }
+
+    Dialogs.FolderDialog {
+        id: vaultFolderDialog
+        title: "Choose Vault Folder"
+        onAccepted: {
+            vault.setFolder(selectedFolder);
+            win.refreshBacklinkCount();
+            win.openNotePicker("open");
+        }
+    }
+
+    NotePicker {
+        id: notePicker
+        objectName: "notePicker"
+        x: Math.round((win.width - width) / 2)
+        y: Math.round(win.height * 0.12)
+        width: Math.min(win.scaledSize(680), win.width - 48)
+        maximumHeight: Math.min(win.scaledSize(480), win.height * 0.7)
+        currentNoteUrl: backend.fileUrl
+        currentNoteTitle: backend.fileName.replace(/\.(md|markdown)$/i, "")
+        darkMode: win.darkMode
+        textScale: win.textScale
+        textColor: win.textColor
+        mutedColor: win.mutedColor
+        highlightColor: backend.themeAccent
+        onNoteChosen: function(noteUrl, line) { win.navigateTo(noteUrl, line); }
+        onCreateRequested: function(title) { win.openNewNote(vault.createNote(title)); }
+        onLinkChosen: function(title) { win.insertLinkToNote(title); }
+        onChooseVaultRequested: vaultFolderDialog.open()
+        onClosed: editor.forceActiveFocus()
     }
 
     UnsavedChangesDialog {
@@ -353,8 +551,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         contentItem: Label {
             text: win.macOS
-                ? "⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
-                : "Ctrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
+                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
     }
@@ -771,6 +969,12 @@ ApplicationWindow {
                         return;
                     }
 
+                    if (event.text === "[" && vault.ready && selectionStart === selectionEnd
+                            && text.charAt(cursorPosition - 1) === "[") {
+                        Qt.callLater(win.openNotePicker, "link");
+                        return;
+                    }
+
                     var returnKey = event.key === Qt.Key_Return || event.key === Qt.Key_Enter;
                     var commandModifier = event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier);
                     if (returnKey && !commandModifier) {
@@ -801,6 +1005,14 @@ ApplicationWindow {
                     var contentChanged = backend.editorTextChanged();
                     if (win.searchOpen && contentChanged)
                         win.updateSearch();
+                }
+
+                TapHandler {
+                    acceptedModifiers: Qt.ControlModifier
+                    onTapped: function(eventPoint) {
+                        win.followLinkAt(editor.positionAt(eventPoint.position.x,
+                                                           eventPoint.position.y));
+                    }
                 }
 
                 Text {
@@ -888,6 +1100,31 @@ ApplicationWindow {
         }
 
         Label {
+            id: backlinkLabel
+            objectName: "backlinkLabel"
+            anchors.right: wordCountLabel.left
+            anchors.bottom: parent.bottom
+            anchors.rightMargin: 16
+            anchors.bottomMargin: 10
+            visible: win.backlinkCount > 0
+            text: win.backlinkCount + (win.backlinkCount === 1 ? " Backlink" : " Backlinks")
+            color: win.mutedColor
+            opacity: backlinkHover.hovered ? 1 : 0.75
+            font.family: "IBM Plex Mono"
+            font.pixelSize: win.scaledSize(11)
+
+            HoverHandler {
+                id: backlinkHover
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            TapHandler {
+                onTapped: win.openNotePicker("backlinks")
+            }
+        }
+
+        Label {
+            id: wordCountLabel
             anchors.right: parent.right
             anchors.bottom: parent.bottom
             anchors.rightMargin: 12

@@ -249,5 +249,18 @@ QList<MarkdownHighlighter::InlineMarkup> MarkdownHighlighter::inlineMarkup(const
                         {contentEnd, whole.start + whole.length - contentEnd}}});
     }
 
+    // [[Target]] shows Target; [[Target|Shown text]] shows only the alias.
+    static const QRegularExpression wikiLinkRe(
+        QStringLiteral("\\[\\[([^\\[\\]\\n|]+?)(?:\\|([^\\[\\]\\n]+?))?\\]\\]"));
+    QRegularExpressionMatchIterator wikiLinkMatches = wikiLinkRe.globalMatch(text);
+    while (wikiLinkMatches.hasNext()) {
+        const QRegularExpressionMatch match = wikiLinkMatches.next();
+        const Span whole = span(match, 0);
+        const Span content = match.capturedStart(2) >= 0 ? span(match, 2) : span(match, 1);
+        markup.append({InlineKind::Link, content,
+                       {{whole.start, content.start - whole.start},
+                        {content.start + content.length, 2}}});
+    }
+
     return markup;
 }

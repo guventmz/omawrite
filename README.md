@@ -10,12 +10,30 @@ A dead-simple Markdown writing app built with Qt Quick and C++ that automaticall
 
 Install via the Omarchy Package Repository via the `omawrite` package. It's installed by default in new installations of Omarchy (from Quattro forward).
 
+## Notes and links
+
+Point Omawrite at a folder of Markdown notes (`Ctrl+Shift+O`, or the prompt the first
+time you press `Ctrl+P`) and it becomes a small, keyboard-first knowledge base. Notes
+stay plain `.md` files; nothing else is written to the folder.
+
+- `Ctrl+P` fuzzy-finds a note by title (or folder). If nothing matches, Enter creates it.
+- `Ctrl+Shift+F` searches the text of every note and jumps to the matching line.
+- `[[Title]]` links to `Title.md` anywhere in the folder; `[[Title|shown text]]` and
+  `[[Title#Heading]]` work too. Typing `[[` offers notes to link.
+- `Ctrl+Enter`, or `Ctrl`-click, follows the link under the cursor, creating the note
+  if it does not exist yet.
+- `Ctrl+[` and `Ctrl+]` go back and forward through the notes you visited.
+- `Ctrl+Shift+B` lists the notes that link to the current one. The footer shows the count.
+
+Moving to another note saves the one you leave, so following links never stops to ask.
+Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
+
 ## Shortcuts
 
 - `Ctrl+S` saves. Unsaved documents use the XDG desktop portal file picker.
 - `Ctrl+Shift+S` saves as.
 - `Ctrl+O` opens a Markdown file through the portal picker.
-- `Ctrl+P` opens the system print dialog.
+- `Ctrl+Shift+P` opens the system print dialog.
 - `Ctrl+N` opens a new Omawrite window.
 - `Ctrl+Z`, `Ctrl+Shift+Z`, and `Ctrl+Y` handle undo and redo.
 - `Super+F` toggles fullscreen. Qt maps this key as `Meta+F`.

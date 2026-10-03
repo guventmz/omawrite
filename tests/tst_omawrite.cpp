@@ -7,6 +7,7 @@
 
 #include "backend.h"
 #include "markdownhighlighter.h"
+#include "vault.h"
 
 class OmawriteTest : public QObject {
     Q_OBJECT
@@ -206,8 +207,10 @@ private slots:
         QVERIFY(!mainQmlPath.isEmpty());
 
         Backend backend;
+        Vault vault;
         QQmlEngine engine;
         engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+        engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
         QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> window(component.create());
@@ -236,8 +239,10 @@ private slots:
         QVERIFY(!mainQmlPath.isEmpty());
 
         Backend backend;
+        Vault vault;
         QQmlEngine engine;
         engine.rootContext()->setContextProperty(QStringLiteral("backend"), &backend);
+        engine.rootContext()->setContextProperty(QStringLiteral("vault"), &vault);
         QQmlComponent component(&engine, QUrl::fromLocalFile(mainQmlPath));
         QVERIFY2(component.isReady(), qPrintable(component.errorString()));
         QScopedPointer<QObject> window(component.create());
@@ -283,6 +288,95 @@ private slots:
         fallbackDocument.saveAsDialog();
         const QUrl fallbackUrl = fallbackDialogSpy.takeFirst().constFirst().toUrl();
         QCOMPARE(QFileInfo(fallbackUrl.toLocalFile()).absolutePath(), QDir::homePath());
+    }
+
+    void ranksFuzzyNoteMatches() {
+        QVERIFY(Vault::fuzzyScore(QStringLiteral("zk"), QStringLiteral("Zettelkasten")) >= 0);
+        QCOMPARE(Vault::fuzzyScore(QStringLiteral("xyz"), QStringLiteral("Zettelkasten")), -1);
+        QVERIFY(Vault::fuzzyScore(QStringLiteral("idea"), QStringLiteral("Idea")) >
+                Vault::fuzzyScore(QStringLiteral("idea"), QStringLiteral("Ideas about ideas")));
+        QVERIFY(Vault::fuzzyScore(QStringLiteral("deep work"), QStringLiteral("Deep Work notes")) >
+                Vault::fuzzyScore(QStringLiteral("deep work"), QStringLiteral("dee pwork")));
+        QVERIFY(Vault::fuzzyScore(QStringLiteral("pk"), QStringLiteral("personal knowledge")) >
+                Vault::fuzzyScore(QStringLiteral("pk"), QStringLiteral("upkeep")));
+    }
+
+    void parsesWikiLinks() {
+        QCOMPARE(Vault::wikiLinkTargets(QStringLiteral("See [[Idea]] and [[Deep Work|this]], [[Notes#Top]].")),
+                 QStringList({QStringLiteral("Idea"), QStringLiteral("Deep Work"),
+                              QStringLiteral("Notes")}));
+        QVERIFY(Vault::wikiLinkTargets(QStringLiteral("[not] a [[\nlink]]")).isEmpty());
+
+        Vault vault;
+        const QString text = QStringLiteral("first line\nread [[Deep Work|this]] now");
+        QCOMPARE(vault.linkAt(text, text.indexOf(QStringLiteral("this"))), QStringLiteral("Deep Work"));
+        QCOMPARE(vault.linkAt(text, text.indexOf(QStringLiteral("now"))), QString());
+        QCOMPARE(vault.linkAt(text, 2), QString());
+    }
+
+    void hidesWikiLinkMarkers() {
+        const QString plain = QStringLiteral("a [[Idea]] b");
+        const QList<MarkdownHighlighter::InlineMarkup> markup = MarkdownHighlighter::inlineMarkup(plain);
+        QCOMPARE(markup.size(), 1);
+        QCOMPARE(plain.mid(markup[0].content.start, markup[0].content.length), QStringLiteral("Idea"));
+        QCOMPARE(markup[0].markers[0].start, 2);
+        QCOMPARE(markup[0].markers[0].length, 2);
+        QCOMPARE(markup[0].markers[1].start, 8);
+        QCOMPARE(markup[0].markers[1].length, 2);
+
+        const QString aliased = QStringLiteral("[[Deep Work|this]]");
+        const MarkdownHighlighter::InlineMarkup alias = MarkdownHighlighter::inlineMarkup(aliased).constFirst();
+        QCOMPARE(aliased.mid(alias.content.start, alias.content.length), QStringLiteral("this"));
+        QCOMPARE(alias.markers[0].length, 12);
+    }
+
+    void navigatesAVault() {
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        const auto write = [&folder](const QString &name, const QString &text) {
+            QDir(folder.path()).mkpath(QFileInfo(folder.filePath(name)).path());
+            QFile file(folder.filePath(name));
+            QVERIFY(file.open(QIODevice::WriteOnly));
+            file.write(text.toUtf8());
+        };
+        write(QStringLiteral("Zettelkasten.md"), QStringLiteral("# Zettelkasten\nLinks to [[Deep Work]].\n"));
+        write(QStringLiteral("books/Deep Work.md"), QStringLiteral("# Deep Work\nFocus beats hours.\n"));
+        write(QStringLiteral("Daily.md"), QStringLiteral("Read [[deep work|Newport]] again.\nFocus today.\n"));
+        write(QStringLiteral(".obsidian/Hidden.md"), QStringLiteral("[[Deep Work]]\n"));
+
+        Vault vault;
+        vault.setPath(folder.path());
+        QVERIFY(vault.ready());
+
+        const QVariantList all = vault.findNotes(QString());
+        QCOMPARE(all.size(), 3);
+        QCOMPARE(vault.findNotes(QStringLiteral("dw")).constFirst().toMap().value(QStringLiteral("title")).toString(),
+                 QStringLiteral("Deep Work"));
+        QCOMPARE(vault.findNotes(QStringLiteral("books")).size(), 1);
+
+        const QUrl deepWork = vault.resolveLink(QStringLiteral("deep work"));
+        QCOMPARE(deepWork, QUrl::fromLocalFile(folder.filePath(QStringLiteral("books/Deep Work.md"))));
+        QCOMPARE(vault.resolveLink(QStringLiteral("books/Deep Work#Focus")), deepWork);
+        QVERIFY(vault.resolveLink(QStringLiteral("Missing")).isEmpty());
+
+        const QVariantList links = vault.backlinks(deepWork);
+        QCOMPARE(links.size(), 2);
+        QCOMPARE(vault.backlinkCount(deepWork), 2);
+
+        const QVariantList hits = vault.searchText(QStringLiteral("focus"));
+        QCOMPARE(hits.size(), 2);
+        const QVariantList both = vault.searchText(QStringLiteral("today focus"));
+        QCOMPARE(both.size(), 1);
+        QCOMPARE(both.constFirst().toMap().value(QStringLiteral("line")).toInt(), 1);
+
+        const QUrl created = vault.createNote(QStringLiteral("New: idea"));
+        QCOMPARE(created, QUrl::fromLocalFile(folder.filePath(QStringLiteral("New- idea.md"))));
+        QFile createdFile(created.toLocalFile());
+        QVERIFY(createdFile.open(QIODevice::ReadOnly));
+        QCOMPARE(createdFile.readAll(), QByteArray("# New- idea\n\n"));
+        QCOMPARE(vault.createNote(QStringLiteral("deep work")), deepWork);
+        QVERIFY(vault.contains(created));
+        QVERIFY(!vault.contains(QUrl::fromLocalFile(QDir::homePath() + QStringLiteral("/x.md"))));
     }
 
 private:
