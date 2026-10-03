@@ -43,6 +43,8 @@ public:
     Q_INVOKABLE void setExpanded(const QString &folder, bool expanded);
     Q_INVOKABLE void reveal(const QUrl &noteUrl);
     Q_INVOKABLE QVariantList findFolders(const QString &query, int limit = 50);
+    Q_INVOKABLE QVariantList findEntries(const QString &query, int limit = 100);
+    Q_INVOKABLE void revealPath(const QString &path);
     Q_INVOKABLE QString relativePath(const QUrl &url) const;
     Q_INVOKABLE QUrl urlFor(const QString &relativePath) const;
 

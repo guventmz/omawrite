@@ -22,6 +22,7 @@ FocusScope {
     property string keyPrefix: ""
     property var marked: []
     property var markTarget: null
+    property bool searching: false
     property string dropTarget: noDropTarget
     readonly property string noDropTarget: "\u0000"
 
@@ -54,10 +55,39 @@ FocusScope {
         return !row ? "" : (row.folder ? row.path : parentOf(row.path));
     }
 
+    // Rebuilding the rows destroys the one holding focus, so focus is handed
+    // back to the list a turn later, once the new rows exist.
     function refresh() {
+        if (searching) {
+            rows = vault.findEntries(searchField.text);
+            list.currentIndex = rows.length > 0 ? 0 : -1;
+            return;
+        }
+        var hadFocus = list.activeFocus || renamingPath !== "";
         var selected = currentRow() ? currentRow().path : "";
         rows = vault.tree();
         select(selected);
+        if (hadFocus && renamingPath === "")
+            Qt.callLater(focusList);
+    }
+
+    // "/" searches the whole vault; Enter jumps to the match in the tree.
+    function startSearch() {
+        searching = true;
+        searchField.text = "";
+        rows = [];
+        searchField.forceActiveFocus();
+    }
+
+    function finishSearch(jump) {
+        var row = jump ? currentRow() : null;
+        searching = false;
+        if (row)
+            vault.revealPath(row.path);
+        refresh();
+        if (row)
+            select(row.path);
+        Qt.callLater(focusList);
     }
 
     function select(path) {
@@ -79,6 +109,8 @@ FocusScope {
     }
 
     function focusList() {
+        if (searching || renamingPath !== "")
+            return;
         list.forceActiveFocus();
         if (list.currentIndex < 0 && rows.length > 0)
             list.currentIndex = 0;
@@ -121,7 +153,7 @@ FocusScope {
         if (opening)
             openNewNoteLater(vault.urlFor(result.path));
         else
-            focusList();
+            Qt.callLater(focusList);
     }
 
     // A new note opens ready to write, with focus in the editor. It waits a
@@ -138,7 +170,7 @@ FocusScope {
         if (opening !== "")
             openNewNoteLater(vault.urlFor(opening));
         else
-            focusList();
+            Qt.callLater(focusList);
     }
 
     function createNote() {
@@ -244,6 +276,7 @@ FocusScope {
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.margins: 12
+        visible: !tree.searching
         text: vault.ready ? vault.name : "No vault folder"
         elide: Text.ElideRight
         color: tree.mutedColor
@@ -251,6 +284,54 @@ FocusScope {
         font.pixelSize: tree.scaledSize(11)
         font.capitalization: Font.AllUppercase
         font.letterSpacing: 1
+    }
+
+    Item {
+        anchors.fill: header
+        visible: tree.searching
+
+        Label {
+            id: slash
+            anchors.left: parent.left
+            anchors.verticalCenter: parent.verticalCenter
+            text: "/"
+            color: tree.highlightColor
+            font.family: "IBM Plex Mono"
+            font.pixelSize: tree.scaledSize(13)
+        }
+
+        TextInput {
+            id: searchField
+            objectName: "fileTreeSearch"
+            anchors.left: slash.right
+            anchors.leftMargin: 4
+            anchors.right: parent.right
+            anchors.verticalCenter: parent.verticalCenter
+            color: tree.textColor
+            selectionColor: tree.highlightColor
+            font.family: "IBM Plex Mono"
+            font.pixelSize: tree.scaledSize(13)
+            clip: true
+            onTextChanged: {
+                if (tree.searching)
+                    tree.refresh();
+            }
+            Keys.onPressed: function(event) {
+                var control = tree.macOS ? (event.modifiers & Qt.MetaModifier) : (event.modifiers & Qt.ControlModifier);
+                if (event.key === Qt.Key_Down || (control && event.key === Qt.Key_N)) {
+                    list.incrementCurrentIndex();
+                } else if (event.key === Qt.Key_Up || (control && event.key === Qt.Key_P)) {
+                    list.decrementCurrentIndex();
+                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    tree.finishSearch(true);
+                } else if (event.key === Qt.Key_Escape) {
+                    tree.finishSearch(false);
+                } else {
+                    return;
+                }
+                event.accepted = true;
+            }
+        }
     }
 
     ListView {
@@ -332,6 +413,8 @@ FocusScope {
             } else if (text === "M") {
                 if (row)
                     tree.moveRequested(row.path, row.name);
+            } else if (text === "/") {
+                tree.startSearch();
             } else if (text === "m" || text === "g") {
                 tree.keyPrefix = text;
             } else if (text === "G") {
@@ -398,6 +481,7 @@ FocusScope {
                 visible: tree.renamingPath !== row.modelData.path
                 text: row.modelData.name
                       + (row.modelData.folder && tree.markTarget === row.modelData.path ? "  ← target" : "")
+                      + (tree.searching && row.modelData.location ? "   " + row.modelData.location : "")
                 elide: Text.ElideRight
                 color: row.isCurrentNote ? tree.highlightColor : tree.textColor
                 font.family: "IBM Plex Mono"
@@ -418,11 +502,15 @@ FocusScope {
                 clip: true
                 font.family: "IBM Plex Mono"
                 font.pixelSize: tree.scaledSize(13)
+                // A hidden rename field must not keep focus, or every key
+                // after a rename would vanish into it.
                 onVisibleChanged: {
                     if (visible) {
                         text = row.modelData.name;
                         selectAll();
                         forceActiveFocus();
+                    } else {
+                        focus = false;
                     }
                 }
                 Keys.onReturnPressed: tree.commitRename(row.modelData.path, text)
@@ -484,9 +572,10 @@ FocusScope {
         anchors.bottom: parent.bottom
         anchors.margins: 10
         visible: true
-        opacity: list.activeFocus ? 1 : 0
+        opacity: list.activeFocus || tree.searching ? 1 : 0
         text: vault.ready
-            ? "j k move  ↵ open  - up  % note  d folder\nR rename  D trash  M move  mf mt mm marks"
+            ? (tree.searching ? "↵ jump to it   esc back"
+                              : "j k move  ↵ open  - up  / search  % note  d folder\nR rename  D trash  M move  mf mt mm marks")
             : "Choose a vault: " + (tree.macOS ? "⇧⌘O" : "Ctrl+Shift+O")
         color: tree.mutedColor
         font.family: "IBM Plex Mono"

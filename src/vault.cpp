@@ -654,3 +654,48 @@ bool Vault::trash(const QString &path) {
     changed();
     return true;
 }
+
+// Notes and folders anywhere in the vault matching a fuzzy query, as tree
+// rows with their location, best matches first.
+QVariantList Vault::findEntries(const QString &query, int limit) {
+    QVariantList results;
+    const QString trimmed = query.trimmed();
+    if (!ready() || trimmed.isEmpty())
+        return results;
+
+    const QDir root(m_path);
+    QList<QPair<int, QVariantMap>> ranked;
+    QDirIterator it(m_path, QDir::Dirs | QDir::Files | QDir::NoDotAndDotDot, QDirIterator::Subdirectories);
+    while (it.hasNext()) {
+        const QFileInfo info = it.nextFileInfo();
+        const QString path = root.relativeFilePath(info.filePath());
+        if (path.startsWith(QLatin1Char('.')) || path.contains(QStringLiteral("/."))
+                || (!info.isDir() && !isNoteFile(info.fileName())))
+            continue;
+        const QString name = info.isDir() ? info.fileName() : withoutMarkdownSuffix(info.fileName());
+        const int score = qMax(fuzzyScore(trimmed, name), fuzzyScore(trimmed, path) - 10);
+        if (score < 0)
+            continue;
+        const QString location = path.contains(QLatin1Char('/')) ? path.section(QLatin1Char('/'), 0, -2)
+                                                                : QString();
+        ranked.append({score, QVariantMap{{QStringLiteral("path"), path},
+                                          {QStringLiteral("name"), name},
+                                          {QStringLiteral("depth"), 0},
+                                          {QStringLiteral("folder"), info.isDir()},
+                                          {QStringLiteral("expanded"), false},
+                                          {QStringLiteral("location"), location}}});
+    }
+    std::stable_sort(ranked.begin(), ranked.end(), [](const auto &a, const auto &b) {
+        return a.first > b.first;
+    });
+    for (const auto &entry : std::as_const(ranked)) {
+        if (results.size() >= limit)
+            break;
+        results.append(entry.second);
+    }
+    return results;
+}
+
+void Vault::revealPath(const QString &path) {
+    reveal(urlFor(path));
+}

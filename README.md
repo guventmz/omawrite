@@ -27,6 +27,7 @@ stay plain `.md` files; nothing else is written to the folder.
 
 `Ctrl+Shift+E` opens the file tree in a popup, on the current note. The tree speaks netrw: `j`/`k`
 move, `Enter` opens, `-` goes up, `%` creates a note, `d` a folder, `R` renames, `D` trashes,
+`/` searches the whole vault and jumps to the match,
 `mf` / `mt` / `mm` mark notes, pick a target folder and move them there, and `M` moves the
 selection through a fuzzy folder picker. Arrows, `h`/`l`, `gg`/`G` and `Escape` work too.
 Every picker also moves with `Ctrl+N` / `Ctrl+P`. Notes and

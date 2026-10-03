@@ -41,6 +41,7 @@ Popup {
             ["Expand / collapse", "l h  → ←", "l h  Right Left"],
             ["Up to parent folder", "-", "-"],
             ["Top / bottom", "gg  G", "gg  G"],
+            ["Search the whole vault", "/", "/"],
             ["New note", "%  n", "%  n"],
             ["New folder", "d  ⇧N", "d  Shift+N"],
             ["Rename", "R  r", "R  r  F2"],
