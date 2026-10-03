@@ -33,9 +33,17 @@ ApplicationWindow {
     readonly property int editorFontPixelSize:
         Math.max(8, Math.round(20 * backend.textScale * backend.textZoom))
     readonly property int footerHeight: scaledSize(32)
-    readonly property int editorWidth: Math.min(
+    // "column" wraps at a readable ~65 characters, "window" at the window
+    // edge, and "off" lets long lines run on and scroll sideways.
+    readonly property bool noWrap: backend.wrapMode === "off"
+    readonly property int columnWidth: Math.min(
         Math.round(writerFontMetrics.averageCharacterWidth * 65),
         Math.max(360, width - Math.round(writerFontMetrics.averageCharacterWidth * 20)))
+    readonly property int editorWidth: backend.wrapMode === "window"
+        ? Math.max(360, width - 48 - Math.round(writerFontMetrics.averageCharacterWidth * 6))
+        : columnWidth
+    // Popups and bars sit a shade off the page, in whatever theme is active.
+    readonly property color surfaceColor: Qt.tint(pageColor, darkMode ? "#1effffff" : "#0f000000")
     property bool closeConfirmed: false
     property bool searchOpen: false
     property bool searchUpdating: false
@@ -417,6 +425,18 @@ ApplicationWindow {
     }
 
     Shortcut {
+        sequence: "Ctrl+Alt+T"
+        context: Qt.ApplicationShortcut
+        onActivated: themePicker.opened ? themePicker.close() : themePicker.open()
+    }
+
+    Shortcut {
+        sequence: "Ctrl+Alt+L"
+        context: Qt.ApplicationShortcut
+        onActivated: backend.cycleWrapMode()
+    }
+
+    Shortcut {
         sequence: "Ctrl+W"
         context: Qt.ApplicationShortcut
         enabled: win.macOS
@@ -539,6 +559,7 @@ ApplicationWindow {
         textColor: win.textColor
         mutedColor: win.mutedColor
         highlightColor: backend.themeAccent
+        surfaceColor: win.surfaceColor
         onNoteChosen: function(noteUrl, line) { win.navigateTo(noteUrl, line); }
         onCreateRequested: function(title) { win.openNewNote(vault.createNote(title)); }
         onLinkChosen: function(title) { win.insertLinkToNote(title); }
@@ -590,8 +611,8 @@ ApplicationWindow {
         anchors.centerIn: parent
         contentItem: Label {
             text: win.macOS
-                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
-                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
+                ? "⌘P  Go to Note\n⇧⌘F  Search Notes\n⇧⌘B  Backlinks\n⌘↩  Follow [[Link]]\n⌘[ / ⌘]  Back / Forward\n[[  Insert Link\n⇧⌘O  Choose Vault\n\n⌘S  Save\n⇧⌘S  Save As\n⌘O  Open\n⌘N  New Window\n⌘W  Close Window\n⌘F  Find\n⌥⌘F  Find and Replace\n⌘B  Bold\n⌘I  Italic\n⌘K  Link\n⌘= / ⌘− / ⌘0  Text Size\n⌥⌘= / ⌥⌘− / ⌥⌘0  Interface Size\n⌥⌘T  Theme\n⌥⌘L  Wrap: Column / Window / Off\n⇧⌘P  Print\n⌃⌘F  Fullscreen\n⌘?  Shortcuts"
+                : "Ctrl+P  Go to Note\nCtrl+Shift+F  Search Notes\nCtrl+Shift+B  Backlinks\nCtrl+Enter  Follow [[Link]]\nCtrl+[ / Ctrl+]  Back / Forward\n[[  Insert Link\nCtrl+Shift+O  Choose Vault\n\nCtrl+S  Save\nCtrl+Shift+S  Save As\nCtrl+O  Open\nCtrl+N  New Window\nCtrl+F  Find\nCtrl+H  Find and Replace\nCtrl+B  Bold\nCtrl+I  Italic\nCtrl+K  Link\nCtrl+= / Ctrl+- / Ctrl+0  Text Size\nCtrl+Alt+= / Ctrl+Alt+- / Ctrl+Alt+0  Interface Size\nCtrl+Alt+T  Theme\nCtrl+Alt+L  Wrap: Column / Window / Off\nCtrl+Shift+P  Print\nF11 / Super+F  Fullscreen\nCtrl+?  Shortcuts"
             lineHeight: 1.5
         }
     }
@@ -610,7 +631,7 @@ ApplicationWindow {
             anchors.topMargin: win.footerHeight
             anchors.bottomMargin: win.footerHeight
             clip: true
-            contentWidth: width
+            contentWidth: win.noWrap ? Math.max(width, editor.x + editor.width + 24) : width
             contentHeight: Math.max(height, editor.y + editor.implicitHeight + 220)
             boundsBehavior: Flickable.StopAtBounds
             ScrollBar.vertical: ScrollBar {
@@ -723,6 +744,12 @@ ApplicationWindow {
                 acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
                 onWheel: function(wheel) {
                     scrollLinger.restart();
+                    var dx = wheel.pixelDelta.x !== 0 ? wheel.pixelDelta.x
+                                                     : wheel.angleDelta.x / 120 * editorFlick.wheelStep;
+                    if (dx !== 0 && editorFlick.contentWidth > editorFlick.width) {
+                        editorFlick.contentX = Math.max(0, Math.min(editorFlick.contentWidth - editorFlick.width,
+                                                                    editorFlick.contentX - dx));
+                    }
                     if (wheel.pixelDelta.y !== 0)
                         editorFlick.scrollTo(editorFlick.clampContentY(editorFlick.contentY - wheel.pixelDelta.y));
                     else
@@ -786,20 +813,30 @@ ApplicationWindow {
                     scrollTo(Math.min(maxContentY, cursorBottom + margin - height));
                 else if (cursorTop - margin < contentY)
                     scrollTo(Math.max(0, cursorTop - margin));
+
+                if (!win.noWrap)
+                    return;
+                var cursorLeft = editor.x + editor.cursorRectangle.x;
+                var maxContentX = Math.max(0, contentWidth - width);
+                if (cursorLeft + margin > contentX + width)
+                    contentX = Math.min(maxContentX, cursorLeft + margin - width);
+                else if (cursorLeft - margin < contentX)
+                    contentX = Math.max(0, cursorLeft - margin);
             }
 
             TextEdit {
                 id: editor
                 objectName: "sourceEditor"
-                x: Math.round((editorFlick.width - width) / 2)
+                x: win.noWrap ? Math.max(0, Math.round((editorFlick.width - win.columnWidth) / 2))
+                              : Math.round((editorFlick.width - width) / 2)
                 // The resting position counts from the window's top edge, so
                 // take back the top inset the Flickable already adds.
                 y: Math.max(0, Math.max(42, Math.round(win.height * 0.05)) - win.footerHeight)
-                width: win.editorWidth
+                width: win.noWrap ? Math.max(win.columnWidth, implicitWidth + 2) : win.editorWidth
                 height: Math.max(editorFlick.height - y - 96, implicitHeight + 20)
                 text: ""
                 textFormat: TextEdit.PlainText
-                wrapMode: TextEdit.Wrap
+                wrapMode: win.noWrap ? TextEdit.NoWrap : TextEdit.Wrap
                 selectByMouse: true
                 persistentSelection: true
                 activeFocusOnPress: true
@@ -1106,6 +1143,15 @@ ApplicationWindow {
                 onClicked: fontPicker.opened ? fontPicker.close() : fontPicker.open()
             }
 
+            FooterIconButton {
+                id: themeButton
+                objectName: "themeButton"
+                iconName: "theme"
+                iconColor: win.mutedColor
+                tooltip: "Theme"
+                onClicked: themePicker.opened ? themePicker.close() : themePicker.open()
+            }
+
             Label {
                 text: backend.status
                 color: win.mutedColor
@@ -1136,9 +1182,28 @@ ApplicationWindow {
             highlightColor: backend.themeAccent
             textZoom: backend.textZoom
             interfaceZoom: backend.interfaceZoom
+            surfaceColor: win.surfaceColor
+            wrapMode: backend.wrapMode
+            onWrapRequested: backend.cycleWrapMode()
             onFontChosen: function(family) { backend.editorFont = family; }
             onTextZoomRequested: function(steps) { backend.zoomText(steps); }
             onInterfaceZoomRequested: function(steps) { backend.zoomInterface(steps); }
+            onClosed: editor.forceActiveFocus()
+        }
+
+        ThemePicker {
+            id: themePicker
+            objectName: "themePicker"
+            x: footerStatus.x + themeButton.x - 8
+            y: footerStatus.y - height - 10
+            themes: backend.themes
+            currentTheme: backend.theme
+            textScale: win.textScale
+            textColor: win.textColor
+            mutedColor: win.mutedColor
+            highlightColor: backend.themeAccent
+            surfaceColor: win.surfaceColor
+            onPreviewRequested: function(theme) { backend.theme = theme; }
             onClosed: editor.forceActiveFocus()
         }
 
@@ -1198,7 +1263,7 @@ ApplicationWindow {
 
             background: Rectangle {
                 radius: 9
-                color: win.darkMode ? "#22221f" : "#fffef2"
+                color: win.surfaceColor
             }
 
             RowLayout {

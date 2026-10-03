@@ -17,6 +17,7 @@
 #include <QRegularExpression>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QHash>
 #include <QJsonDocument>
 #include <QJsonObject>
 #include <QLockFile>
@@ -40,6 +41,10 @@ const QString lastSaveDirectorySetting = QStringLiteral("file/lastSaveDirectory"
 const QString editorFontSetting = QStringLiteral("editor/font");
 const QString textZoomSetting = QStringLiteral("view/textZoom");
 const QString interfaceZoomSetting = QStringLiteral("view/interfaceZoom");
+const QString themeSetting = QStringLiteral("view/theme");
+const QString wrapModeSetting = QStringLiteral("view/wrap");
+const QStringList wrapModes = {QStringLiteral("column"), QStringLiteral("window"),
+                               QStringLiteral("off")};
 
 // Noto ships a separate family per script, which buries every other font in
 // the picker. Offer only the core Latin families; the rest still serve as
@@ -101,6 +106,10 @@ Backend::Backend(QObject *parent) : QObject(parent) {
         : defaultEditorFont();
     m_textZoom = steppedZoom(QSettings().value(textZoomSetting, 1.0).toReal(), 0);
     m_interfaceZoom = steppedZoom(QSettings().value(interfaceZoomSetting, 1.0).toReal(), 0);
+    const QString savedTheme = QSettings().value(themeSetting).toString();
+    m_theme = Themes::exists(savedTheme) ? savedTheme : Themes::defaultId();
+    const QString savedWrap = QSettings().value(wrapModeSetting).toString();
+    m_wrapMode = wrapModes.contains(savedWrap) ? savedWrap : wrapModes.constFirst();
 
     const QString stateDirectory = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     QDir().mkpath(stateDirectory);
@@ -196,6 +205,48 @@ void Backend::setTextScale(qreal textScale) {
     emit textScaleChanged();
 }
 
+void Backend::setTheme(const QString &theme) {
+    if (theme == m_theme || !Themes::exists(theme))
+        return;
+    m_theme = theme;
+    QSettings().setValue(themeSetting, theme);
+    loadOmarchyTheme();
+    emit themeChanged();
+}
+
+// Each entry carries its colors for the current light/dark mode, so the theme
+// picker can draw a swatch without asking again.
+QVariantList Backend::themes() const {
+    QVariantList list;
+    for (const ThemeInfo &info : Themes::all()) {
+        const ThemePalette palette = Themes::palette(info.id, m_darkMode);
+        list.append(QVariantMap{{QStringLiteral("id"), info.id},
+                                {QStringLiteral("name"), info.name},
+                                {QStringLiteral("background"), palette.background},
+                                {QStringLiteral("foreground"), palette.foreground},
+                                {QStringLiteral("heading"), palette.heading},
+                                {QStringLiteral("accent"), palette.accent}});
+    }
+    return list;
+}
+
+void Backend::setWrapMode(const QString &mode) {
+    if (mode == m_wrapMode || !wrapModes.contains(mode))
+        return;
+    m_wrapMode = mode;
+    QSettings().setValue(wrapModeSetting, mode);
+    emit wrapModeChanged();
+}
+
+void Backend::cycleWrapMode() {
+    const int next = (wrapModes.indexOf(m_wrapMode) + 1) % wrapModes.size();
+    setWrapMode(wrapModes.at(next));
+    static const QStringList labels = {QStringLiteral("Wrap: column"),
+                                       QStringLiteral("Wrap: window width"),
+                                       QStringLiteral("Wrap: off")};
+    setStatus(labels.at(next));
+}
+
 // Zoom moves in 10% steps between 50% and 300%; zero steps only snaps a
 // stored value back onto that grid.
 qreal Backend::steppedZoom(qreal zoom, int steps) {
@@ -238,7 +289,7 @@ void Backend::attachDocument(QObject *textDocument) {
     m_lastDocumentText = m_document->toPlainText();
     m_highlighter = new MarkdownHighlighter(m_document);
     m_highlighter->setDarkMode(m_darkMode);
-    m_highlighter->setColors(m_themeBackground, m_themeForeground, m_themeAccent);
+    m_highlighter->setPalette(m_palette);
 
     connect(m_document, &QTextDocument::contentsChange, this,
             [this](int position, int, int charsAdded) {
@@ -427,6 +478,10 @@ QVariantList Backend::hiddenRangesAt(int position) const {
     const QTextBlock block =
         m_document->findBlock(qBound(0, position, m_document->characterCount() - 1));
     if (!block.isValid())
+        return ranges;
+    // Nothing is hidden inside code and math blocks, so the caret moves freely.
+    if (MarkdownHighlighter::isVerbatimState(block.userState())
+            || block.previous().userState() == MarkdownHighlighter::MathState)
         return ranges;
 
     const int lineStart = block.position();
@@ -685,71 +740,64 @@ void Backend::watchCurrentFile() {
 }
 
 void Backend::loadOmarchyTheme() {
-    m_themeBackground = m_darkMode ? QStringLiteral("#101010") : QStringLiteral("#ffffff");
-    m_themeForeground = m_darkMode ? QStringLiteral("#eeeeee") : QStringLiteral("#222324");
-    m_themeAccent = m_darkMode ? QStringLiteral("#5584aa") : QStringLiteral("#2077b2");
-    m_themeSelection = m_darkMode ? QStringLiteral("#186a9a") : QStringLiteral("#2077b2");
+    // Only the default theme takes Omarchy's colors; picking another theme is
+    // an explicit choice that should not be overridden.
+    QHash<QString, QString> omarchy;
+    if (m_theme == Themes::defaultId()) {
+        QFile file(QDir::homePath()
+                   + QStringLiteral("/.local/state/omarchy/current/theme/colors.toml"));
+        if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
+            QTextStream in(&file);
+            while (!in.atEnd()) {
+                const QString line = in.readLine().trimmed();
+                if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
+                    continue;
 
-    const QString colorsPath = QDir::homePath()
-        + QStringLiteral("/.local/state/omarchy/current/theme/colors.toml");
-    QString themeMode;
-    QFile file(colorsPath);
-    if (file.open(QIODevice::ReadOnly | QIODevice::Text)) {
-        QTextStream in(&file);
-        while (!in.atEnd()) {
-            const QString line = in.readLine().trimmed();
-            if (line.isEmpty() || line.startsWith(QLatin1Char('#')))
-                continue;
+                const int equals = line.indexOf(QLatin1Char('='));
+                if (equals < 0)
+                    continue;
 
-            const int equals = line.indexOf(QLatin1Char('='));
-            if (equals < 0)
-                continue;
-
-            const QString key = line.left(equals).trimmed();
-            QString value = line.mid(equals + 1).trimmed();
-            if (value.size() >= 2
-                    && ((value.front() == QLatin1Char('"') && value.back() == QLatin1Char('"'))
-                        || (value.front() == QLatin1Char('\'') && value.back() == QLatin1Char('\''))))
-                value = value.mid(1, value.size() - 2);
-
-            if (key == QStringLiteral("mode"))
-                themeMode = value;
-            else if (key == QStringLiteral("background"))
-                m_themeBackground = value;
-            else if (key == QStringLiteral("foreground"))
-                m_themeForeground = value;
-            else if (key == QStringLiteral("accent"))
-                m_themeAccent = value;
-            else if (key == QStringLiteral("selection"))
-                m_themeSelection = value;
+                QString value = line.mid(equals + 1).trimmed();
+                if (value.size() >= 2
+                        && ((value.front() == QLatin1Char('"') && value.back() == QLatin1Char('"'))
+                            || (value.front() == QLatin1Char('\'') && value.back() == QLatin1Char('\''))))
+                    value = value.mid(1, value.size() - 2);
+                omarchy.insert(line.left(equals).trimmed(), value);
+            }
         }
     }
 
-    bool themeModeKnown = false;
+    // An explicit mode wins; otherwise a theme background decides by luminance.
     bool themeIsDark = m_darkMode;
-    if (themeMode == QStringLiteral("dark")) {
-        themeIsDark = true;
-        themeModeKnown = true;
-    } else if (themeMode == QStringLiteral("light")) {
-        themeIsDark = false;
-        themeModeKnown = true;
-    } else {
-        const QColor background(m_themeBackground);
-        if (background.isValid()) {
-            const double luminance = 0.299 * background.redF()
-                + 0.587 * background.greenF() + 0.114 * background.blueF();
-            themeIsDark = luminance < 0.5;
-            themeModeKnown = true;
-        }
+    const QString mode = omarchy.value(QStringLiteral("mode"));
+    const QColor background(omarchy.value(QStringLiteral("background")));
+    if (mode == QStringLiteral("dark") || mode == QStringLiteral("light")) {
+        themeIsDark = mode == QStringLiteral("dark");
+    } else if (background.isValid()) {
+        themeIsDark = 0.299 * background.redF() + 0.587 * background.greenF()
+            + 0.114 * background.blueF() < 0.5;
     }
-    if (themeModeKnown && themeIsDark != m_darkMode) {
+    if (themeIsDark != m_darkMode) {
         m_darkMode = themeIsDark;
         emit darkModeChanged();
     }
 
+    m_palette = Themes::palette(m_theme, m_darkMode);
+    if (!omarchy.isEmpty()) {
+        m_palette.background = omarchy.value(QStringLiteral("background"), m_palette.background);
+        m_palette.foreground = omarchy.value(QStringLiteral("foreground"), m_palette.foreground);
+        m_palette.accent = omarchy.value(QStringLiteral("accent"), m_palette.accent);
+        m_palette.selection = omarchy.value(QStringLiteral("selection"), m_palette.selection);
+        m_palette.heading = m_palette.foreground;
+    }
+    m_themeBackground = m_palette.background;
+    m_themeForeground = m_palette.foreground;
+    m_themeAccent = m_palette.accent;
+    m_themeSelection = m_palette.selection;
+
     if (m_highlighter) {
         m_highlighter->setDarkMode(m_darkMode);
-        m_highlighter->setColors(m_themeBackground, m_themeForeground, m_themeAccent);
+        m_highlighter->setPalette(m_palette);
     }
 
     emit themeColorsChanged();

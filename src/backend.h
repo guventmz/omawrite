@@ -11,6 +11,8 @@
 #include <QVariantList>
 #include <memory>
 
+#include "themes.h"
+
 class MarkdownHighlighter;
 class QTextDocument;
 class QWindow;
@@ -31,6 +33,9 @@ class Backend : public QObject {
     Q_PROPERTY(QString themeForeground READ themeForeground NOTIFY themeColorsChanged)
     Q_PROPERTY(QString themeAccent READ themeAccent NOTIFY themeColorsChanged)
     Q_PROPERTY(QString themeSelection READ themeSelection NOTIFY themeColorsChanged)
+    Q_PROPERTY(QString theme READ theme WRITE setTheme NOTIFY themeChanged)
+    Q_PROPERTY(QVariantList themes READ themes NOTIFY themeColorsChanged)
+    Q_PROPERTY(QString wrapMode READ wrapMode WRITE setWrapMode NOTIFY wrapModeChanged)
     Q_PROPERTY(QString editorFont READ editorFont WRITE setEditorFont NOTIFY editorFontChanged)
     Q_PROPERTY(QStringList availableFonts READ availableFonts CONSTANT)
 
@@ -57,6 +62,12 @@ public:
     QString themeForeground() const { return m_themeForeground; }
     QString themeAccent() const { return m_themeAccent; }
     QString themeSelection() const { return m_themeSelection; }
+    QString theme() const { return m_theme; }
+    void setTheme(const QString &theme);
+    QVariantList themes() const;
+    QString wrapMode() const { return m_wrapMode; }
+    void setWrapMode(const QString &mode);
+    Q_INVOKABLE void cycleWrapMode();
     QString editorFont() const { return m_editorFont; }
     void setEditorFont(const QString &family);
     QStringList availableFonts() const;
@@ -99,6 +110,8 @@ signals:
     void darkModeChanged();
     void textScaleChanged();
     void textZoomChanged();
+    void themeChanged();
+    void wrapModeChanged();
     void interfaceZoomChanged();
     void themeColorsChanged();
     void editorFontChanged();
@@ -160,6 +173,9 @@ private:
     QString m_themeForeground;
     QString m_themeAccent;
     QString m_themeSelection;
+    QString m_theme;
+    QString m_wrapMode;
+    ThemePalette m_palette;
     QString m_editorFont;
     QFileSystemWatcher m_themeWatcher;
 };

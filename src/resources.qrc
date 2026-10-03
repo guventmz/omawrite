@@ -8,6 +8,7 @@
         <file alias="ExternalChangeDialog.qml">ExternalChangeDialog.qml</file>
         <file alias="FontPicker.qml">FontPicker.qml</file>
         <file alias="NotePicker.qml">NotePicker.qml</file>
+        <file alias="ThemePicker.qml">ThemePicker.qml</file>
         <file alias="EditorMutations.js">EditorMutations.js</file>
         <file alias="fonts/IBMPlexMono-Regular.ttf">../fonts/IBMPlexMono-Regular.ttf</file>
         <file alias="fonts/IBMPlexMono-Italic.ttf">../fonts/IBMPlexMono-Italic.ttf</file>

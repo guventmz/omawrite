@@ -28,6 +28,17 @@ stay plain `.md` files; nothing else is written to the folder.
 Moving to another note saves the one you leave, so following links never stops to ask.
 Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 
+## Look and layout
+
+- `Ctrl+Alt+T` (or the half-circle button in the footer) picks a theme: Omawrite, Paper, Nord,
+  Solarized, Gruvbox or High Contrast. Arrow keys preview live, Enter keeps, Escape reverts.
+  Each theme has a light and a dark variant that follows the system; headings get their
+  own color and size. The Omawrite theme still takes Omarchy's colors.
+- `Ctrl+Alt+L` cycles wrapping: a readable column, the window width, or off (long lines
+  scroll sideways). Also in the font popup.
+- Fenced code blocks get light syntax colors in a monospace font, and `$inline$` and
+  `$$display$$` math are colored and kept verbatim, so Markdown never mangles them.
+
 ## Shortcuts
 
 - `Ctrl+S` saves. Unsaved documents use the XDG desktop portal file picker.

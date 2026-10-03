@@ -17,13 +17,15 @@ HEADERS += \
     src/backend.h \
     src/markdownhighlighter.h \
     src/systemtheme.h \
-    src/vault.h
+    src/vault.h \
+    src/themes.h
 
 SOURCES += \
     src/main.cpp \
     src/backend.cpp \
     src/markdownhighlighter.cpp \
     src/systemtheme.cpp \
-    src/vault.cpp
+    src/vault.cpp \
+    src/themes.cpp
 
 RESOURCES += src/resources.qrc

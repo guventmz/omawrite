@@ -20,6 +20,7 @@ Popup {
     property color mutedColor: "#909191"
     property color highlightColor: "#428bca"
     property real maximumHeight: 480
+    property color surfaceColor: "#22221f"
 
     property var results: []
     property var allBacklinks: []
@@ -117,7 +118,7 @@ Popup {
 
     background: Rectangle {
         radius: 9
-        color: picker.darkMode ? "#22221f" : "#fffef2"
+        color: picker.surfaceColor
     }
 
     contentItem: Column {

@@ -54,6 +54,16 @@ Item {
                 context.lineTo(4.5, 9.5);
                 context.lineTo(11.5, 9.5);
                 context.lineTo(11.5, 13.5);
+            } else if (control.iconName === "theme") {
+                context.arc(8, 8, 5.5, 0, 2 * Math.PI);
+                context.moveTo(8, 2.5);
+                context.lineTo(8, 13.5);
+                context.moveTo(8, 5);
+                context.lineTo(12.5, 5);
+                context.moveTo(8, 8);
+                context.lineTo(13.5, 8);
+                context.moveTo(8, 11);
+                context.lineTo(12.5, 11);
             } else if (control.iconName === "font") {
                 context.moveTo(3, 13.5);
                 context.lineTo(8, 2.5);

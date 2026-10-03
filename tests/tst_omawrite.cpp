@@ -8,6 +8,9 @@
 #include "backend.h"
 #include "markdownhighlighter.h"
 #include "vault.h"
+#include "themes.h"
+#include <QTextBlock>
+#include <QTextDocument>
 
 class OmawriteTest : public QObject {
     Q_OBJECT
@@ -364,6 +367,59 @@ private slots:
         const MarkdownHighlighter::InlineMarkup alias = MarkdownHighlighter::inlineMarkup(aliased).constFirst();
         QCOMPARE(aliased.mid(alias.content.start, alias.content.length), QStringLiteral("this"));
         QCOMPARE(alias.markers[0].length, 12);
+    }
+
+    void keepsCodeAndMathVerbatim() {
+        // Markdown never applies inside inline code or math.
+        QVERIFY(MarkdownHighlighter::inlineMarkup(QStringLiteral("`a*b*c` and $x_1 + x_2$")).isEmpty());
+        QCOMPARE(MarkdownHighlighter::inlineMarkup(QStringLiteral("$a_b$ but *real*")).size(), 1);
+
+        const auto spans = MarkdownHighlighter::verbatimSpans(
+            QStringLiteral("cost $5 and $6, but $x^2$ and $$\\frac{a}{b}$$ and `$y$`"));
+        QCOMPARE(spans.size(), 3);
+        QVERIFY(spans.at(0).math);
+        QVERIFY(spans.at(1).math);
+        QVERIFY(!spans.at(2).math);
+
+        QTextDocument document;
+        document.setPlainText(QStringLiteral(
+            "# Title\n```python\n# comment, not a heading\nx = *1*\n```\n"
+            "$$\nx=\\begin{bmatrix}x_1\\\\x_2\\end{bmatrix}\n$$\nafter"));
+        MarkdownHighlighter highlighter(&document);
+        highlighter.rehighlight();
+        QStringList states;
+        for (QTextBlock block = document.begin(); block.isValid(); block = block.next())
+            states.append(MarkdownHighlighter::isVerbatimState(block.userState())
+                              ? QStringLiteral("v") : QStringLiteral("-"));
+        QCOMPARE(states.join(QString()), QStringLiteral("-vvv-vv--"));
+        QCOMPARE(MarkdownHighlighter::commentStyleFor(QStringLiteral("Python")),
+                 MarkdownHighlighter::CommentStyle::Hash);
+        QCOMPARE(MarkdownHighlighter::commentStyleFor(QStringLiteral("rust")),
+                 MarkdownHighlighter::CommentStyle::Slash);
+
+    }
+
+    void remembersThemeAndWrap() {
+        {
+            Backend backend;
+            QCOMPARE(backend.theme(), Themes::defaultId());
+            QCOMPARE(backend.wrapMode(), QStringLiteral("column"));
+            backend.setTheme(QStringLiteral("solarized"));
+            backend.setTheme(QStringLiteral("not-a-theme"));
+            QCOMPARE(backend.theme(), QStringLiteral("solarized"));
+            QCOMPARE(backend.themeBackground(),
+                     Themes::palette(QStringLiteral("solarized"), backend.darkMode()).background);
+            backend.cycleWrapMode();
+            backend.cycleWrapMode();
+            QCOMPARE(backend.wrapMode(), QStringLiteral("off"));
+            QCOMPARE(backend.status(), QStringLiteral("Wrap: off"));
+            QCOMPARE(backend.themes().size(), Themes::all().size());
+        }
+        Backend reopened;
+        QCOMPARE(reopened.theme(), QStringLiteral("solarized"));
+        QCOMPARE(reopened.wrapMode(), QStringLiteral("off"));
+        reopened.setTheme(Themes::defaultId());
+        reopened.setWrapMode(QStringLiteral("column"));
     }
 
     void navigatesAVault() {

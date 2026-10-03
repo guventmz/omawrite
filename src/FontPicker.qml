@@ -16,10 +16,13 @@ Popup {
     property real maximumHeight: 440
     property real textZoom: 1
     property real interfaceZoom: 1
+    property color surfaceColor: "#22221f"
+    property string wrapMode: "column"
 
     signal fontChosen(string family)
     signal textZoomRequested(int steps)
     signal interfaceZoomRequested(int steps)
+    signal wrapRequested()
 
     readonly property var filteredFonts: {
         var query = filterField.text.trim().toLocaleLowerCase();
@@ -42,7 +45,7 @@ Popup {
 
     // Shrink to fit when a filter leaves only a few fonts.
     readonly property real headerHeight: scaledSize(34) + 13
-    readonly property real sizeControlsHeight: scaledSize(64) + 13
+    readonly property real sizeControlsHeight: scaledSize(96) + 13
     height: Math.min(maximumHeight, topPadding + bottomPadding + headerHeight
                      + Math.max(scaledSize(36), fontList.contentHeight) + sizeControlsHeight)
 
@@ -139,7 +142,7 @@ Popup {
 
     background: Rectangle {
         radius: 9
-        color: picker.darkMode ? "#22221f" : "#fffef2"
+        color: picker.surfaceColor
     }
 
     contentItem: Column {
@@ -254,6 +257,41 @@ Popup {
             label: "Text size"
             zoom: picker.textZoom
             onStepped: function(steps) { picker.textZoomRequested(steps); }
+        }
+
+        Item {
+            objectName: "wrapToggle"
+            width: parent.width
+            height: picker.scaledSize(32)
+
+            Label {
+                anchors.left: parent.left
+                anchors.leftMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: "Wrap"
+                color: picker.textColor
+                font.family: picker.defaultFont
+                font.pixelSize: picker.scaledSize(13)
+            }
+
+            Label {
+                anchors.right: parent.right
+                anchors.rightMargin: 8
+                anchors.verticalCenter: parent.verticalCenter
+                text: ({ column: "Column", window: "Window width", off: "Off" })[picker.wrapMode] + "  ›"
+                color: wrapHover.hovered ? picker.textColor : picker.mutedColor
+                font.family: picker.defaultFont
+                font.pixelSize: picker.scaledSize(12)
+            }
+
+            HoverHandler {
+                id: wrapHover
+                cursorShape: Qt.PointingHandCursor
+            }
+
+            TapHandler {
+                onTapped: picker.wrapRequested()
+            }
         }
 
         SizeStepper {
