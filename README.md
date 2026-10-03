@@ -73,6 +73,14 @@ one rewrites the notes that embed it. The browser preview renders them in place.
   The page loads marked, KaTeX and highlight.js from cdnjs, so it needs a connection;
   offline it shows the plain text.
 
+## The same look in Obsidian
+
+`extras/obsidian/omawrite-paper.css` is an Obsidian CSS snippet with Omawrite's Paper theme:
+IBM Plex Mono at 20px, 1.4 line height, a 65-character column, and body-size bold headings
+in the heading color. Copy it into `<vault>/.obsidian/snippets/`, enable it under Settings >
+Appearance > CSS snippets, and use Obsidian's default theme. Install all four IBM Plex Mono
+styles from `fonts/`, or Obsidian fakes bold and italic.
+
 ## Spelling (macOS)
 
 Omawrite uses the system spell checker, so your languages, learned words and
