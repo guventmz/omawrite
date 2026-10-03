@@ -19,6 +19,9 @@ FocusScope {
     property string renamingPath: ""
     property string openAfterRename: ""
     property var dragging: null
+    property string keyPrefix: ""
+    property var marked: []
+    property var markTarget: null
     property string dropTarget: noDropTarget
     readonly property string noDropTarget: "\u0000"
 
@@ -179,6 +182,38 @@ FocusScope {
         }
     }
 
+    // Netrw marking: mf marks notes, mt picks the target folder, mm moves.
+    function toggleMark() {
+        var row = currentRow();
+        if (!row)
+            return;
+        var index = marked.indexOf(row.path);
+        marked = index < 0 ? marked.concat([row.path])
+                           : marked.filter(function(path) { return path !== row.path; });
+        list.incrementCurrentIndex();
+    }
+
+    function setMarkTarget() {
+        var row = currentRow();
+        markTarget = !row ? "" : (row.folder ? row.path : parentOf(row.path));
+        message("Target: " + (markTarget === "" ? vault.name : markTarget));
+    }
+
+    function moveMarked() {
+        if (marked.length === 0) {
+            message("Nothing marked (mf)");
+            return;
+        }
+        if (markTarget === null) {
+            message("No target folder (mt)");
+            return;
+        }
+        var paths = marked;
+        marked = [];
+        for (var i = 0; i < paths.length; ++i)
+            moveTo(paths[i], markTarget);
+    }
+
     function dragMoved(scenePoint) {
         var point = list.mapFromItem(null, scenePoint.x, scenePoint.y);
         dragLabel.x = point.x + 12;
@@ -234,35 +269,75 @@ FocusScope {
         keyNavigationEnabled: true
         ScrollBar.vertical: ScrollBar { policy: ScrollBar.AsNeeded }
 
+        // Netrw's keys, with arrows and the original ones alongside:
+        //   j k / C-n C-p  move        h l / Left Right  fold / unfold
+        //   Enter o v t    open        -                 up to the parent folder
+        //   % N            new note    d Shift+N         new folder
+        //   R r F2         rename      D Cmd+Backspace   move to the Trash
+        //   mf mt mm mu    mark, target, move marked, unmark      M  move via picker
+        //   gg G           top, bottom C-l               refresh
         Keys.onPressed: function(event) {
             var row = tree.currentRow();
-            var command = event.modifiers & Qt.ControlModifier;
-            var plain = !(event.modifiers & (Qt.ControlModifier | Qt.AltModifier | Qt.MetaModifier));
-            if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+            var text = event.text;
+            var control = tree.macOS ? (event.modifiers & Qt.MetaModifier) : (event.modifiers & Qt.ControlModifier);
+            var command = tree.macOS ? (event.modifiers & Qt.ControlModifier) : false;
+            var prefix = tree.keyPrefix;
+            tree.keyPrefix = "";
+
+            if (prefix === "m") {
+                if (text === "f")
+                    tree.toggleMark();
+                else if (text === "t")
+                    tree.setMarkTarget();
+                else if (text === "m")
+                    tree.moveMarked();
+                else if (text === "u")
+                    tree.marked = [];
+            } else if (prefix === "g") {
+                if (text === "g")
+                    currentIndex = 0;
+            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter
+                       || text === "o" || text === "v" || text === "t") {
                 tree.activate(currentIndex);
-            } else if (event.key === Qt.Key_Right && row && row.folder) {
+            } else if (text === "j" || (control && event.key === Qt.Key_N)) {
+                incrementCurrentIndex();
+            } else if (text === "k" || (control && event.key === Qt.Key_P)) {
+                decrementCurrentIndex();
+            } else if ((text === "l" || event.key === Qt.Key_Right) && row && row.folder) {
                 if (!row.expanded)
                     vault.setExpanded(row.path, true);
                 else if (currentIndex + 1 < count)
                     currentIndex += 1;
-            } else if (event.key === Qt.Key_Left && row) {
+            } else if ((text === "h" || event.key === Qt.Key_Left) && row) {
                 if (row.folder && row.expanded)
                     vault.setExpanded(row.path, false);
                 else if (tree.parentOf(row.path) !== "")
                     tree.select(tree.parentOf(row.path));
-            } else if (plain && event.key === Qt.Key_N) {
-                if (event.modifiers & Qt.ShiftModifier)
-                    tree.createFolder();
-                else
-                    tree.createNote();
-            } else if ((plain && event.key === Qt.Key_R) || event.key === Qt.Key_F2) {
+            } else if (text === "-" && row) {
+                var parent = tree.parentOf(row.path);
+                if (parent !== "") {
+                    tree.select(parent);
+                    vault.setExpanded(parent, false);
+                }
+            } else if (text === "%" || text === "n") {
+                tree.createNote();
+            } else if (text === "d" || text === "N") {
+                tree.createFolder();
+            } else if (text === "R" || text === "r" || event.key === Qt.Key_F2) {
                 if (row)
                     tree.startRename(row.path);
-            } else if (plain && event.key === Qt.Key_M) {
+            } else if (text === "D" || event.key === Qt.Key_Delete
+                       || ((command || control) && event.key === Qt.Key_Backspace)) {
+                tree.trashCurrent();
+            } else if (text === "M") {
                 if (row)
                     tree.moveRequested(row.path, row.name);
-            } else if ((command && event.key === Qt.Key_Backspace) || event.key === Qt.Key_Delete) {
-                tree.trashCurrent();
+            } else if (text === "m" || text === "g") {
+                tree.keyPrefix = text;
+            } else if (text === "G") {
+                currentIndex = count - 1;
+            } else if (control && event.key === Qt.Key_L) {
+                tree.refresh();
             } else if (event.key === Qt.Key_Escape) {
                 tree.done();
             } else {
@@ -295,6 +370,16 @@ FocusScope {
                     : rowHover.hovered ? 0.06 : 0
             }
 
+            Rectangle {
+                x: 3
+                anchors.verticalCenter: parent.verticalCenter
+                width: tree.scaledSize(5)
+                height: width
+                radius: width / 2
+                color: tree.highlightColor
+                visible: tree.marked.indexOf(row.modelData.path) >= 0
+            }
+
             Label {
                 id: chevron
                 x: row.indent
@@ -312,6 +397,7 @@ FocusScope {
                 anchors.verticalCenter: parent.verticalCenter
                 visible: tree.renamingPath !== row.modelData.path
                 text: row.modelData.name
+                      + (row.modelData.folder && tree.markTarget === row.modelData.path ? "  ← target" : "")
                 elide: Text.ElideRight
                 color: row.isCurrentNote ? tree.highlightColor : tree.textColor
                 font.family: "IBM Plex Mono"
@@ -400,7 +486,7 @@ FocusScope {
         visible: true
         opacity: list.activeFocus ? 1 : 0
         text: vault.ready
-            ? "↵ open  N note  ⇧N folder\nR rename  M move  " + (tree.macOS ? "⌘⌫" : "Del") + " trash"
+            ? "j k move  ↵ open  - up  % note  d folder\nR rename  D trash  M move  mf mt mm marks"
             : "Choose a vault: " + (tree.macOS ? "⇧⌘O" : "Ctrl+Shift+O")
         color: tree.mutedColor
         font.family: "IBM Plex Mono"

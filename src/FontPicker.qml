@@ -167,6 +167,17 @@ Popup {
                 font.pixelSize: picker.scaledSize(14)
                 onTextChanged: fontList.currentIndex = 0
 
+                Keys.onPressed: function(event) {
+                    var control = Qt.platform.os === "osx" ? (event.modifiers & Qt.MetaModifier)
+                                                           : (event.modifiers & Qt.ControlModifier);
+                    if (control && event.key === Qt.Key_N) {
+                        fontList.incrementCurrentIndex();
+                        event.accepted = true;
+                    } else if (control && event.key === Qt.Key_P) {
+                        fontList.decrementCurrentIndex();
+                        event.accepted = true;
+                    }
+                }
                 Keys.onUpPressed: fontList.decrementCurrentIndex()
                 Keys.onDownPressed: fontList.incrementCurrentIndex()
                 Keys.onReturnPressed: picker.choose(picker.filteredFonts[fontList.currentIndex])

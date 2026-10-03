@@ -151,6 +151,17 @@ Popup {
                 onTextChanged: picker.mode === "text" ? textSearchDelay.restart()
                                                       : picker.refreshResults()
 
+                Keys.onPressed: function(event) {
+                    var control = Qt.platform.os === "osx" ? (event.modifiers & Qt.MetaModifier)
+                                                           : (event.modifiers & Qt.ControlModifier);
+                    if (control && event.key === Qt.Key_N) {
+                        resultList.incrementCurrentIndex();
+                        event.accepted = true;
+                    } else if (control && event.key === Qt.Key_P) {
+                        resultList.decrementCurrentIndex();
+                        event.accepted = true;
+                    }
+                }
                 Keys.onUpPressed: resultList.decrementCurrentIndex()
                 Keys.onDownPressed: resultList.incrementCurrentIndex()
                 Keys.onBacktabPressed: resultList.decrementCurrentIndex()

@@ -58,6 +58,10 @@ ApplicationWindow {
     property var forwardStack: []
     property int backlinkCount: 0
     property var misspellings: []
+    // While a list is open, Ctrl+N / Ctrl+P move in it instead (they are
+    // also app shortcuts on Linux, where Ctrl is the command key).
+    readonly property bool pickerOpen: notePicker.opened || fontPicker.opened
+                                       || themePicker.opened || fileTreePopup.opened
     property var vim: Vim.create()
     property string vimState: "normal"
     property bool vimSearching: false
@@ -476,6 +480,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+N"
         context: Qt.ApplicationShortcut
+        enabled: !win.pickerOpen
         onActivated: backend.newWindow()
     }
 
@@ -500,6 +505,7 @@ ApplicationWindow {
     Shortcut {
         sequence: "Ctrl+P"
         context: Qt.ApplicationShortcut
+        enabled: !win.pickerOpen
         onActivated: win.openNotePicker("open")
     }
 

@@ -77,6 +77,17 @@ Popup {
         focus: true
         highlightMoveDuration: 0
 
+        Keys.onPressed: function(event) {
+            var control = Qt.platform.os === "osx" ? (event.modifiers & Qt.MetaModifier)
+                                                   : (event.modifiers & Qt.ControlModifier);
+            if (control && event.key === Qt.Key_N) {
+                picker.preview(Math.min(count - 1, currentIndex + 1));
+                event.accepted = true;
+            } else if (control && event.key === Qt.Key_P) {
+                picker.preview(Math.max(0, currentIndex - 1));
+                event.accepted = true;
+            }
+        }
         Keys.onUpPressed: picker.preview(Math.max(0, currentIndex - 1))
         Keys.onDownPressed: picker.preview(Math.min(count - 1, currentIndex + 1))
         Keys.onReturnPressed: picker.commit(currentIndex)

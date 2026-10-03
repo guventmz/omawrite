@@ -32,17 +32,23 @@ Popup {
             ["Insert link", "[[", "[["],
             ["File tree", "⇧⌘E", "Ctrl+Shift+E"],
             ["Preview in browser", "⇧⌘P", "Ctrl+Shift+P"],
-            ["Choose vault folder", "⇧⌘O", "Ctrl+Shift+O"]
+            ["Choose vault folder", "⇧⌘O", "Ctrl+Shift+O"],
+            ["Down / up in any list", "⌃n  ⌃p", "Ctrl+N  Ctrl+P"]
         ]},
-        { title: "File tree", items: [
-            ["Open note / fold folder", "↵", "Enter"],
-            ["Expand / collapse", "→  ←", "Right  Left"],
-            ["New note", "N", "N"],
-            ["New folder", "⇧N", "Shift+N"],
-            ["Rename", "R", "R  F2"],
-            ["Move to folder", "M", "M"],
-            ["Move to Trash", "⌘⌫", "Del"],
-            ["Close", "Esc", "Esc"]
+        { title: "File tree (netrw keys)", items: [
+            ["Down / up", "j k  ⌃n ⌃p", "j k  Ctrl+N Ctrl+P"],
+            ["Open note / fold folder", "↵  o v t", "Enter  o v t"],
+            ["Expand / collapse", "l h  → ←", "l h  Right Left"],
+            ["Up to parent folder", "-", "-"],
+            ["Top / bottom", "gg  G", "gg  G"],
+            ["New note", "%  n", "%  n"],
+            ["New folder", "d  ⇧N", "d  Shift+N"],
+            ["Rename", "R  r", "R  r  F2"],
+            ["Move to Trash", "D  ⌘⌫", "D  Del"],
+            ["Move via folder picker", "M", "M"],
+            ["Mark / target / move marked", "mf  mt  mm", "mf  mt  mm"],
+            ["Unmark all", "mu", "mu"],
+            ["Refresh / close", "⌃l  Esc", "Ctrl+L  Esc"]
         ]},
         { title: "Editing", items: [
             ["Bold", "⌘B", "Ctrl+B"],

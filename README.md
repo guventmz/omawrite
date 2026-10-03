@@ -25,9 +25,11 @@ stay plain `.md` files; nothing else is written to the folder.
 - `Ctrl+[` and `Ctrl+]` go back and forward through the notes you visited.
 - `Ctrl+Shift+B` lists the notes that link to the current one. The footer shows the count.
 
-`Ctrl+Shift+E` opens the file tree in a popup, on the current note. In the tree: arrows move and fold, `Enter` opens, `N` creates a note,
-`Shift+N` a folder, `R` renames, `M` moves (pick the folder by fuzzy search),
-`Cmd+Backspace` / `Delete` moves to the Trash, `Escape` closes it. Notes and
+`Ctrl+Shift+E` opens the file tree in a popup, on the current note. The tree speaks netrw: `j`/`k`
+move, `Enter` opens, `-` goes up, `%` creates a note, `d` a folder, `R` renames, `D` trashes,
+`mf` / `mt` / `mm` mark notes, pick a target folder and move them there, and `M` moves the
+selection through a fuzzy folder picker. Arrows, `h`/`l`, `gg`/`G` and `Escape` work too.
+Every picker also moves with `Ctrl+N` / `Ctrl+P`. Notes and
 folders can also be dragged onto folders. Renaming a note rewrites the `[[links]]` to it.
 
 `Ctrl+,` shows every shortcut, grouped, with a filter.
