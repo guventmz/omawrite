@@ -25,10 +25,9 @@ stay plain `.md` files; nothing else is written to the folder.
 - `Ctrl+[` and `Ctrl+]` go back and forward through the notes you visited.
 - `Ctrl+Shift+B` lists the notes that link to the current one. The footer shows the count.
 
-`Ctrl+Shift+E` opens the file tree on the current note (press it again to jump in, and
-once more to close). In the tree: arrows move and fold, `Enter` opens, `N` creates a note,
+`Ctrl+Shift+E` opens the file tree in a popup, on the current note. In the tree: arrows move and fold, `Enter` opens, `N` creates a note,
 `Shift+N` a folder, `R` renames, `M` moves (pick the folder by fuzzy search),
-`Cmd+Backspace` / `Delete` moves to the Trash, `Escape` returns to the editor. Notes and
+`Cmd+Backspace` / `Delete` moves to the Trash, `Escape` closes it. Notes and
 folders can also be dragged onto folders. Renaming a note rewrites the `[[links]]` to it.
 
 `Ctrl+,` shows every shortcut, grouped, with a filter.
@@ -46,7 +45,7 @@ Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
   scroll sideways). Also in the font popup.
 - Fenced code blocks get light syntax colors in a monospace font, and `$inline$` and
   `$$display$$` math are colored and kept verbatim, so Markdown never mangles them.
-- `Ctrl+Shift+V` (or the eye button) opens the note rendered in your browser, in the same
+- `Ctrl+Shift+P` (or the eye button) opens the note rendered in your browser, in the same
   theme, font and column: formatted Markdown, typeset math (KaTeX) and highlighted code.
   The page loads marked, KaTeX and highlight.js from cdnjs, so it needs a connection;
   offline it shows the plain text.
@@ -67,7 +66,7 @@ System Settings preferences carry over:
 - `Ctrl+S` saves. Unsaved documents use the XDG desktop portal file picker.
 - `Ctrl+Shift+S` saves as.
 - `Ctrl+O` opens a Markdown file through the portal picker.
-- `Ctrl+Shift+P` opens the system print dialog.
+- `Ctrl+Alt+P` opens the system print dialog.
 - `Ctrl+N` opens a new Omawrite window.
 - `Ctrl+Z`, `Ctrl+Shift+Z`, and `Ctrl+Y` handle undo and redo.
 - `Super+F` toggles fullscreen. Qt maps this key as `Meta+F`.

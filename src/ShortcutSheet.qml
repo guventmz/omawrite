@@ -31,7 +31,7 @@ Popup {
             ["Back / forward", "⌘[  ⌘]", "Ctrl+[  Ctrl+]"],
             ["Insert link", "[[", "[["],
             ["File tree", "⇧⌘E", "Ctrl+Shift+E"],
-            ["Preview in browser", "⇧⌘V", "Ctrl+Shift+V"],
+            ["Preview in browser", "⇧⌘P", "Ctrl+Shift+P"],
             ["Choose vault folder", "⇧⌘O", "Ctrl+Shift+O"]
         ]},
         { title: "File tree", items: [
@@ -42,7 +42,7 @@ Popup {
             ["Rename", "R", "R  F2"],
             ["Move to folder", "M", "M"],
             ["Move to Trash", "⌘⌫", "Del"],
-            ["Back to editor", "Esc", "Esc"]
+            ["Close", "Esc", "Esc"]
         ]},
         { title: "Editing", items: [
             ["Bold", "⌘B", "Ctrl+B"],
@@ -61,7 +61,7 @@ Popup {
             ["Text size", "⌘=  ⌘−  ⌘0", "Ctrl+=  Ctrl+-  Ctrl+0"],
             ["Interface size", "⌥⌘=  ⌥⌘−  ⌥⌘0", "Ctrl+Alt+=  -  0"],
             ["Fullscreen", "⌃⌘F", "F11"],
-            ["This sheet", "⌘,", "Ctrl+,"]
+            ["This sheet", "⌘,  ⌘?", "Ctrl+,  Ctrl+?"]
         ]},
         { title: "File", items: [
             ["Save", "⌘S", "Ctrl+S"],
@@ -70,7 +70,7 @@ Popup {
             ["New window", "⌘N", "Ctrl+N"],
             ["Close window", "⌘W", "—"],
             ["Minimize", "⌘M", "—"],
-            ["Print", "⇧⌘P", "Ctrl+Shift+P"]
+            ["Print", "⌥⌘P", "Ctrl+Alt+P"]
         ]}
     ]
 

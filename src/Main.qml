@@ -57,8 +57,6 @@ ApplicationWindow {
     property var forwardStack: []
     property int backlinkCount: 0
     property var misspellings: []
-    property bool sidebarOpen: false
-    readonly property int sidebarWidth: sidebarOpen ? scaledSize(260) : 0
 
     Material.theme: darkMode ? Material.Dark : Material.Light
     Material.accent: backend.themeAccent
@@ -229,19 +227,11 @@ ApplicationWindow {
                                                    editor.positionAt(editor.width, top + editorFlick.height));
     }
 
-    // Shift+Cmd+E opens the tree on the current note, jumps into it when it is
-    // already open, and closes it when it already has focus.
     function toggleFileTree() {
-        if (sidebarOpen && fileTree.activeFocus) {
-            sidebarOpen = false;
-            editor.forceActiveFocus();
-            return;
-        }
-        var opening = !sidebarOpen;
-        sidebarOpen = true;
-        if (opening)
-            fileTree.revealCurrentNote();
-        fileTree.focusList();
+        if (fileTreePopup.opened)
+            fileTreePopup.close();
+        else
+            fileTreePopup.open();
     }
 
     function entryMoved(from, to) {
@@ -378,7 +368,8 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+?"
+        // "?" is Shift+/ on most keyboards, so match it every way it arrives.
+        sequences: ["Ctrl+?", "Ctrl+Shift+?", "Ctrl+Shift+/"]
         context: Qt.ApplicationShortcut
         onActivated: shortcutSheet.opened ? shortcutSheet.close() : shortcutSheet.open()
     }
@@ -402,13 +393,13 @@ ApplicationWindow {
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+P"
+        sequence: "Ctrl+Alt+P"
         context: Qt.ApplicationShortcut
         onActivated: backend.printDocument()
     }
 
     Shortcut {
-        sequence: "Ctrl+Shift+V"
+        sequence: "Ctrl+Shift+P"
         context: Qt.ApplicationShortcut
         onActivated: backend.previewInBrowser()
     }
@@ -791,7 +782,72 @@ ApplicationWindow {
         onLinkChosen: function(title) { win.insertLinkToNote(title); }
         onChooseVaultRequested: vaultFolderDialog.open()
         onFolderChosen: function(movingPath, folder) { fileTree.moveTo(movingPath, folder); }
-        onClosed: mode === "move" ? fileTree.focusList() : editor.forceActiveFocus()
+        onClosed: mode === "move" && fileTreePopup.opened ? fileTree.focusList()
+                                                          : editor.forceActiveFocus()
+    }
+
+    Popup {
+        id: fileTreePopup
+        objectName: "fileTreePopup"
+        x: Math.round((win.width - width) / 2)
+        y: Math.round(win.height * 0.1)
+        width: Math.min(win.scaledSize(520), win.width - 48)
+        height: Math.min(win.scaledSize(560), win.height * 0.8)
+        padding: 0
+        modal: false
+        focus: true
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        Material.elevation: 8
+
+        background: Rectangle {
+            radius: 9
+            color: win.surfaceColor
+        }
+
+        onAboutToShow: fileTree.revealCurrentNote()
+        onOpened: fileTree.focusList()
+        onClosed: {
+            if (!notePicker.opened)
+                editor.forceActiveFocus();
+        }
+
+        contentItem:
+FileTree {
+                id: fileTree
+                objectName: "fileTree"
+                currentNoteUrl: backend.fileUrl
+                macOS: win.macOS
+                textScale: win.textScale
+                textColor: win.textColor
+                mutedColor: win.mutedColor
+                highlightColor: backend.themeAccent
+                surfaceColor: win.surfaceColor
+                onNoteChosen: function(noteUrl) {
+                    fileTreePopup.close();
+                    win.navigateTo(noteUrl);
+                }
+                onNewNoteReady: function(noteUrl) {
+                    fileTreePopup.close();
+                    win.openNewNote(noteUrl);
+                }
+                onMoveRequested: function(path, name) {
+                    notePicker.movingPath = path;
+                    notePicker.movingName = name;
+                    notePicker.show("move");
+                }
+                onEntryMoved: function(from, to) { win.entryMoved(from, to); }
+                onEntryTrashed: function(entryUrl) { win.entryTrashed(entryUrl); }
+                onBeforeChange: {
+                    if (backend.modified && backend.fileUrl.toString() !== "")
+                        backend.save();
+                }
+                onLinksRewritten: {
+                    if (!backend.modified && vault.contains(backend.fileUrl))
+                        backend.reloadFromDisk();
+                }
+                onMessage: function(text) { backend.showStatus(text); }
+                onDone: fileTreePopup.close()
+            }
     }
 
     ShortcutSheet {
@@ -850,47 +906,10 @@ ApplicationWindow {
     Item {
         anchors.fill: parent
 
-        FileTree {
-            id: fileTree
-            objectName: "fileTree"
-            anchors.left: parent.left
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            anchors.bottomMargin: win.footerHeight
-            width: win.sidebarWidth
-            visible: win.sidebarOpen
-            currentNoteUrl: backend.fileUrl
-            macOS: win.macOS
-            textScale: win.textScale
-            textColor: win.textColor
-            mutedColor: win.mutedColor
-            highlightColor: backend.themeAccent
-            surfaceColor: win.surfaceColor
-            onNoteChosen: function(noteUrl) { win.navigateTo(noteUrl); }
-            onNewNoteReady: function(noteUrl) { win.openNewNote(noteUrl); }
-            onMoveRequested: function(path, name) {
-                notePicker.movingPath = path;
-                notePicker.movingName = name;
-                notePicker.show("move");
-            }
-            onEntryMoved: function(from, to) { win.entryMoved(from, to); }
-            onEntryTrashed: function(entryUrl) { win.entryTrashed(entryUrl); }
-            onBeforeChange: {
-                if (backend.modified && backend.fileUrl.toString() !== "")
-                    backend.save();
-            }
-            onLinksRewritten: {
-                if (!backend.modified && vault.contains(backend.fileUrl))
-                    backend.reloadFromDisk();
-            }
-            onMessage: function(text) { backend.showStatus(text); }
-            onDone: editor.forceActiveFocus()
-        }
-
         Flickable {
             id: editorFlick
             anchors.fill: parent
-            anchors.leftMargin: 24 + win.sidebarWidth
+            anchors.leftMargin: 24
             anchors.rightMargin: 24
             // Inset the scrolling area by the footer strip at both ends, so
             // scrolled text never runs under the footer buttons, status, or
@@ -1588,7 +1607,7 @@ ApplicationWindow {
             anchors.left: parent.left
             anchors.right: parent.right
             anchors.topMargin: 12
-            anchors.leftMargin: 12 + win.sidebarWidth
+            anchors.leftMargin: 12
             anchors.rightMargin: 12
             height: win.scaledSize(win.replaceOpen ? 104 : 56)
             visible: win.searchOpen

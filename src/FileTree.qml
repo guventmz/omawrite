@@ -203,11 +203,6 @@ FocusScope {
 
     Component.onCompleted: refresh()
 
-    Rectangle {
-        anchors.fill: parent
-        color: tree.surfaceColor
-    }
-
     Label {
         id: header
         anchors.left: parent.left
