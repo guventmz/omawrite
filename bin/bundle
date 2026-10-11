@@ -23,7 +23,27 @@ rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 ditto "$ROOT/build/Omawrite.app" "$APP"
 
-macdeployqt "$APP" -qmldir="$ROOT/src" -always-overwrite "$@"
+# Homebrew's split Qt packages leave StateMachine's @rpath dependencies
+# unresolved during QML deployment. Include its plugin in the initial
+# framework scan, which can resolve them via Qt's library installation path.
+if command -v qmake6 >/dev/null 2>&1; then
+  QMAKE=qmake6
+else
+  QMAKE=qmake
+fi
+QML_DIR="$("$QMAKE" -query QT_INSTALL_QML)"
+STATE_MACHINE_PLUGIN="$QML_DIR/QtQml/StateMachine/libqtqmlstatemachineplugin.dylib"
+if [ -f "$STATE_MACHINE_PLUGIN" ]; then
+  mkdir -p "$APP/Contents/PlugIns/quick"
+  ditto "$STATE_MACHINE_PLUGIN" "$APP/Contents/PlugIns/quick/libqtqmlstatemachineplugin.dylib"
+fi
+
+# The staging bundle is fresh; forcing overwrites would repeatedly copy and
+# patch shared frameworks for every QML plugin.
+# Finder/File Provider metadata is not allowed in signed app bundles.
+xattr -cr "$APP"
+macdeployqt "$APP" -qmldir="$ROOT/src" -no-codesign "$@"
+xattr -cr "$APP"
 codesign --force --deep --sign - "$APP"
 
 echo "Bundled $APP"
