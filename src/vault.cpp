@@ -8,6 +8,7 @@
 #include <QClipboard>
 #include <QGuiApplication>
 #include <QImage>
+#include <QLocale>
 #include <QMimeData>
 #include <QSaveFile>
 #include <QSettings>
@@ -17,6 +18,7 @@
 namespace {
 const QString vaultPathSetting = QStringLiteral("vault/path");
 const QString expandedSetting = QStringLiteral("vault/expanded");
+const QString journalFolderSetting = QStringLiteral("journal/folder");
 
 bool isNoteFile(const QString &name) {
     return name.endsWith(QStringLiteral(".md"), Qt::CaseInsensitive)
@@ -333,6 +335,71 @@ QUrl Vault::createNote(const QString &title) {
 
     refresh();
     return QUrl::fromLocalFile(path);
+}
+
+QDate Vault::journalDate(const QString &title) {
+    static const QRegularExpression dated(QStringLiteral("^\\d{4}-\\d{2}-\\d{2}$"));
+    if (!dated.match(title).hasMatch())
+        return {};
+    return QDate::fromString(title, Qt::ISODate);
+}
+
+QString Vault::journalFolder() const {
+    return QSettings().value(journalFolderSetting, QStringLiteral("Journal")).toString();
+}
+
+QUrl Vault::todaysJournalEntry() {
+    return journalEntry(QDate::currentDate());
+}
+
+// The day's entry, wherever it lives; a new one starts with the date
+// written out, so the page reads like a diary.
+QUrl Vault::journalEntry(const QDate &date) {
+    if (!ready() || !date.isValid())
+        return {};
+    const QString name = date.toString(Qt::ISODate);
+    const QUrl existing = resolveLink(name);
+    if (existing.isValid())
+        return existing;
+
+    const QString folder = journalFolder();
+    if (!QDir(m_path).mkpath(absolute(folder)))
+        return {};
+    const QString path = QDir(absolute(folder)).filePath(name + QStringLiteral(".md"));
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::NewOnly | QIODevice::Text))
+        return {};
+    file.write(QStringLiteral("# %1\n\n").arg(QLocale().toString(date, QLocale::LongFormat)).toUtf8());
+    file.close();
+
+    if (!folder.isEmpty())
+        setExpanded(folder, true);
+    changed();
+    return QUrl::fromLocalFile(path);
+}
+
+// The closest entry before (direction < 0) or after the given note's day,
+// counting from today when the note is not a journal entry.
+QUrl Vault::adjacentJournalEntry(const QUrl &noteUrl, int direction) {
+    if (!ready() || direction == 0)
+        return {};
+    ensureScanned();
+    QDate from = journalDate(QFileInfo(noteUrl.toLocalFile()).completeBaseName());
+    if (!from.isValid())
+        from = QDate::currentDate();
+
+    QDate best;
+    QString bestPath;
+    for (const Note &note : std::as_const(m_notes)) {
+        const QDate date = journalDate(note.title);
+        if (!date.isValid() || (direction < 0 ? date >= from : date <= from))
+            continue;
+        if (!best.isValid() || (direction < 0 ? date > best : date < best)) {
+            best = date;
+            bestPath = note.path;
+        }
+    }
+    return best.isValid() ? QUrl::fromLocalFile(bestPath) : QUrl();
 }
 
 QString Vault::linkAt(const QString &text, int position) const {

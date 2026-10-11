@@ -226,6 +226,30 @@ ApplicationWindow {
         return true;
     }
 
+    // Today's entry opens with the caret at its end, ready for the next line.
+    function openJournal() {
+        if (!vault.ready) {
+            vaultFolderDialog.open();
+            return;
+        }
+        var url = vault.todaysJournalEntry();
+        if (url.toString() === "") {
+            backend.showStatus("Could not create today's journal entry");
+            return;
+        }
+        openNewNote(url);
+    }
+
+    function stepJournal(direction) {
+        if (!vault.ready)
+            return;
+        var url = vault.adjacentJournalEntry(backend.fileUrl, direction);
+        if (url.toString() === "")
+            backend.showStatus(direction < 0 ? "No earlier journal entry" : "No later journal entry");
+        else
+            navigateTo(url);
+    }
+
     function openNotePicker(mode) {
         if (mode === "backlinks" && !vault.contains(backend.fileUrl))
             mode = "open";
@@ -590,6 +614,27 @@ ApplicationWindow {
         enabled: !keymap.recording
         context: Qt.ApplicationShortcut
         onActivated: win.openNotePicker("backlinks")
+    }
+
+    Shortcut {
+        sequences: keymap.bindings.journalToday
+        enabled: !keymap.recording
+        context: Qt.ApplicationShortcut
+        onActivated: win.openJournal()
+    }
+
+    Shortcut {
+        sequences: keymap.bindings.journalPrevious
+        enabled: !keymap.recording
+        context: Qt.WindowShortcut
+        onActivated: win.stepJournal(-1)
+    }
+
+    Shortcut {
+        sequences: keymap.bindings.journalNext
+        enabled: !keymap.recording
+        context: Qt.WindowShortcut
+        onActivated: win.stepJournal(1)
     }
 
     Shortcut {
@@ -1773,6 +1818,14 @@ FileTree {
                 iconColor: win.mutedColor
                 tooltip: "Open"
                 onClicked: backend.openDialog()
+            }
+
+            FooterIconButton {
+                objectName: "journalButton"
+                iconName: "journal"
+                iconColor: win.mutedColor
+                tooltip: "Today's Journal"
+                onClicked: win.openJournal()
             }
 
             FooterIconButton {

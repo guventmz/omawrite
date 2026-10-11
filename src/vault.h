@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QDate>
 #include <QDateTime>
 #include <QHash>
 #include <QObject>
@@ -59,6 +60,14 @@ public:
     Q_INVOKABLE QString importImage(const QUrl &file);
     Q_INVOKABLE static bool isImage(const QUrl &file);
     QString attachmentsFolder();
+
+    // A daily journal: one note per day named YYYY-MM-DD, found anywhere in
+    // the vault and created in the journal folder (Journal/ by default).
+    Q_INVOKABLE QUrl todaysJournalEntry();
+    Q_INVOKABLE QUrl adjacentJournalEntry(const QUrl &noteUrl, int direction);
+    QUrl journalEntry(const QDate &date);
+    QString journalFolder() const;
+    static QDate journalDate(const QString &title);
 
     Q_INVOKABLE QString createNoteIn(const QString &folder);
     Q_INVOKABLE QString createFolder(const QString &parent);

@@ -70,6 +70,18 @@ Item {
                 context.lineTo(13.5, 8);
                 context.moveTo(8, 11);
                 context.lineTo(12.5, 11);
+            } else if (control.iconName === "journal") {
+                context.moveTo(2.5, 4);
+                context.lineTo(13.5, 4);
+                context.lineTo(13.5, 13.5);
+                context.lineTo(2.5, 13.5);
+                context.closePath();
+                context.moveTo(2.5, 7);
+                context.lineTo(13.5, 7);
+                context.moveTo(5.5, 2.5);
+                context.lineTo(5.5, 5);
+                context.moveTo(10.5, 2.5);
+                context.lineTo(10.5, 5);
             } else if (control.iconName === "font") {
                 context.moveTo(3, 13.5);
                 context.lineTo(8, 2.5);

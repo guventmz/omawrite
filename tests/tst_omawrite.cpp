@@ -848,6 +848,36 @@ QtObject {
         QVERIFY(!vault.contains(QUrl::fromLocalFile(QDir::homePath() + QStringLiteral("/x.md"))));
     }
 
+    void keepsADailyJournal() {
+        QTemporaryDir folder;
+        QVERIFY(folder.isValid());
+        QDir(folder.path()).mkpath(QStringLiteral("old"));
+        QFile older(folder.filePath(QStringLiteral("old/2026-01-02.md")));
+        QVERIFY(older.open(QIODevice::WriteOnly));
+        older.close();
+
+        Vault vault;
+        vault.setPath(folder.path());
+        QCOMPARE(vault.journalEntry(QDate(2026, 1, 2)), QUrl::fromLocalFile(older.fileName()));
+
+        const QDate day(2026, 10, 11);
+        const QUrl entry = vault.journalEntry(day);
+        QCOMPARE(entry, QUrl::fromLocalFile(folder.filePath(QStringLiteral("Journal/2026-10-11.md"))));
+        QFile entryFile(entry.toLocalFile());
+        QVERIFY(entryFile.open(QIODevice::ReadOnly));
+        QCOMPARE(QString::fromUtf8(entryFile.readAll()),
+                 QStringLiteral("# %1\n\n").arg(QLocale().toString(day, QLocale::LongFormat)));
+        QCOMPARE(vault.journalEntry(day), entry);
+        QCOMPARE(vault.resolveLink(QStringLiteral("2026-10-11")), entry);
+
+        const QUrl later = vault.journalEntry(QDate(2026, 10, 12));
+        QCOMPARE(vault.adjacentJournalEntry(entry, -1), QUrl::fromLocalFile(older.fileName()));
+        QCOMPARE(vault.adjacentJournalEntry(entry, 1), later);
+        QVERIFY(vault.adjacentJournalEntry(later, 1).isEmpty());
+        QVERIFY(!Vault::journalDate(QStringLiteral("2026-13-01")).isValid());
+        QVERIFY(!Vault::journalDate(QStringLiteral("Notes 2026-10-11")).isValid());
+    }
+
 private:
     QTemporaryDir m_settingsDirectory;
 };

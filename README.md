@@ -46,6 +46,15 @@ vim's Ctrl keys are the Control key, so `⌘` shortcuts keep working alongside i
 Moving to another note saves the one you leave, so following links never stops to ask.
 Folders starting with a dot (`.obsidian`, `.git`, `.trash`) are ignored.
 
+## Journal
+
+`Ctrl+Shift+J` (or the calendar button in the footer) opens today's journal entry, with the
+caret at the end, ready to write. Entries are plain notes named by date, `Journal/2026-10-11.md`,
+and a new one starts with the date written out as its heading. An entry that already exists
+anywhere in the vault is reused, so a folder of Obsidian daily notes works as is, and
+`[[2026-10-11]]` links to that day. `Ctrl+Alt+Left` and `Ctrl+Alt+Right` step to the previous
+and next entry that exists, skipping days without one.
+
 ## Images
 
 Images stay files in the vault, in `assets/` at its root. Pasting an image (`Cmd+V` with a
